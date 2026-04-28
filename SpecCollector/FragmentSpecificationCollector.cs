@@ -331,22 +331,22 @@ namespace SpecCollector
                 Источник = docName
             };
 
-            row.Артикул = GetCellValueAsString(rowElement, scheme, "Artikul");
-            row.АртикулБазовый = GetCellValueAsString(rowElement, scheme, "Artikul bazovyj");
-            row.Длина = GetCellValueAsDouble(rowElement, scheme, "Dlina");
-            row.ДлинаМ = GetCellValueAsDouble(rowElement, scheme, "Dlina, m");
-            row.Наименование = GetCellValueAsString(rowElement, scheme, "Naimenovanie");
-            row.ЗначениеВсего = GetCellValueAsDouble(rowElement, scheme, "Znachenie vsego");
-            row.Раздел = GetCellValueAsString(rowElement, scheme, "Razdel");
-            row.КоличествоВсего = GetCellValueAsInt(rowElement, scheme, "Kolichestvo vsego");
-            row.ЗаполненияТип = GetCellValueAsString(rowElement, scheme, "Zapolneniya tip");
-            row.ЗаполненияШирина = GetCellValueAsDouble(rowElement, scheme, "Zapolneniya shirina");
-            row.ЗаполненияВысота = GetCellValueAsDouble(rowElement, scheme, "Zapolneniya vysota");
-            row.ЗаполненияТолщина = GetCellValueAsDouble(rowElement, scheme, "Zapolneniya tolshchina");
-            row.ЗаполненияПлощадь = GetCellValueAsDouble(rowElement, scheme, "Zapolneniya ploshchad");
+            row.Артикул = GetCellValueAsString(rowElement, scheme, "Артикул");
+            row.АртикулБазовый = GetCellValueAsString(rowElement, scheme, "Артикул базовый");
+            row.Длина = GetCellValueAsDouble(rowElement, scheme, "Длина");
+            row.ДлинаМ = GetCellValueAsDouble(rowElement, scheme, "Длина, м");
+            row.Наименование = GetCellValueAsString(rowElement, scheme, "Наименование");
+            row.ЗначениеВсего = GetCellValueAsDouble(rowElement, scheme, "Значение всего");
+            row.Раздел = GetCellValueAsString(rowElement, scheme, "Раздел");
+            row.КоличествоВсего = GetCellValueAsInt(rowElement, scheme, "Количество всего");
+            row.ЗаполненияТип = GetCellValueAsString(rowElement, scheme, "Заполнения тип");
+            row.ЗаполненияШирина = GetCellValueAsDouble(rowElement, scheme, "Заполнения ширина");
+            row.ЗаполненияВысота = GetCellValueAsDouble(rowElement, scheme, "Заполнения высота");
+            row.ЗаполненияТолщина = GetCellValueAsDouble(rowElement, scheme, "Заполнения толщина");
+            row.ЗаполненияПлощадь = GetCellValueAsDouble(rowElement, scheme, "Заполнения площадь");
             var incDoc = rowElement.IncludeInDoc?.Value;
             row.Спецификация = (incDoc != null && (bool)incDoc) ? "1" : "0";
-            row.МестоУстановки = GetCellValueAsString(rowElement, scheme, "Mesto ustanovki");
+            row.МестоУстановки = GetCellValueAsString(rowElement, scheme, "Место установки");
 
             return row;
         }
