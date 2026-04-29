@@ -15,9 +15,8 @@ namespace SpecCollector
     public class FragmentSpecificationCollector
     {
         private const string ProductStructureName = "m2spec";
-        private const string _logPath = @"C:\Users\Lerik\YandexDisk\templates\!Programming\Git\Sobiratel\SpecCollector\bin\Debug\spec_collector.log";
         private readonly List<SpecificationRow> _results = new List<SpecificationRow>();
-        private readonly HashSet<string> _processedDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        //private readonly HashSet<string> _processedDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private string _rootПлоскость;
         private int? _rootЭтаж;
@@ -25,30 +24,6 @@ namespace SpecCollector
 
         public bool OnlyBOMGenerate = false;
         private string _path;
-
-        private void SafeWriteLog(string message, bool isFirstWrite = false)
-        {
-            try
-            {
-                var logDir = Path.GetDirectoryName(_logPath);
-                if (!Directory.Exists(logDir))
-                {
-                    Directory.CreateDirectory(logDir);
-                }
-                if (isFirstWrite)
-                {
-                    File.WriteAllText(_logPath, message);
-                }
-                else
-                {
-                    File.AppendAllText(_logPath, message);
-                }
-            }
-            catch
-            {
-                // ignore logging errors
-            }
-        }
 
         public void GenerateSpec()
         {
@@ -58,14 +33,14 @@ namespace SpecCollector
                 throw new InvalidOperationException("No active T-FLEX document.");
             }
 
-            OnlyBOMGenerate = true;
+            //OnlyBOMGenerate = true;
             _path = doc.FilePath;
 
             SpecDebugService.Show();
             SpecDebugService.Log("Start collecting specifications...");
             SpecDebugService.Log("Folder: " + _path);
 
-            string fn_AllSpecs = Path.Combine(_path, "VseSpecifikacii.xlsx");
+            string fn_AllSpecs = Path.Combine(_path, "Спецификации.xlsx");
 
             var allData = new List<Dictionary<string, object>>();
 
@@ -90,18 +65,22 @@ namespace SpecCollector
                 return;
             }
 
-            foreach (var etazh in изделие.Этажи)
+            foreach (var floor in изделие.Этажи)
             {
-                SpecDebugService.Log("  Этаж " + etazh.Этаж + "...");
-
+                SpecDebugService.Log($" {изделие.Плоскость} Этаж {floor.Этаж} ...");
                 doc.BeginChanges("");
                 SetTextVariableValue(doc, SpecData.плоскостьVarName, изделие.Плоскость);
-                SetIntegerVariableValue(doc, SpecData.ЭтажVarName, etazh.Этаж);
+                SetIntegerVariableValue(doc, SpecData.ЭтажVarName, floor.Этаж);
+
                 doc.EndChanges();
                 doc.Changed = true;
 
+                doc.BeginChanges("");
                 UpdateProductStructure(doc);
-                CollectFromDocument(doc, изделие.Плоскость, etazh.Этаж, etazh.Этажей);
+                doc.EndChanges();
+
+                SpecDebugService.Log($" Сбор данных ...");
+                CollectFromDocument(doc, изделие.Плоскость, floor.Этаж, floor.Этажей);
 
                 foreach (var row in _results)
                 {
@@ -118,7 +97,7 @@ namespace SpecCollector
             _rootПлоскость = плоскость;
             _rootЭтаж = этаж;
             _rootЭтажей = этажей;
-            _processedDocs.Clear();
+            //_processedDocs.Clear();
             ProcessDocument(doc, 0);
         }
 
@@ -128,34 +107,14 @@ namespace SpecCollector
 
             sheets.Add("Спецификация", allData);
 
-            var groupMapping = new Dictionary<string, string>
-            {
-                { @"Детали\Крышка ригеля", "Детали" },
-                { @"Детали\Крышка стойки", "Детали" },
-                { @"Детали\Прижим ригеля", "Детали" },
-                { @"Детали\Прижим стойки", "Детали" },
-                { @"Детали\Ригели", "Детали" },
-                { @"Детали\Стойки", "Детали" },
-                { "Термомосты", "Термомосты" },
-                { @"Заполнения", "Заполнения" },
-                { @"Заполнения\Изделия", "Заполнения" },
-                { @"Комплектующие", "Комплектующие" },
-                { @"Комплектующие\Кронштейны", "Комплектующие" },
-                { "Уплотнители", "Материалы" },
-                { "Листовые материалы", "Материалы" },
-                { "Материалы", "Материалы" },
-                { "Раскрой", "Раскрой" },
-                { "Раскрой деталей", "Раскрой" },
-                { @"Проверка\Набор ригеля", "Проверка" },
-                { @"Проверка\Набор стойки", "Проверка" }
-            };
+            var groupMapping = SpecData.BOMSections;
 
             var groups = new Dictionary<string, List<Dictionary<string, object>>>();
 
             foreach (var row in allData)
             {
-                string razdel = row.ContainsKey("Razdel") ? row["Razdel"]?.ToString() : null;
-                string groupName = "Drugoe";
+                string razdel = row.ContainsKey("Раздел") ? row["Раздел"]?.ToString() : null;
+                string groupName = "Другое";
 
                 if (razdel != null && groupMapping.ContainsKey(razdel))
                 {
@@ -224,47 +183,65 @@ namespace SpecCollector
         public void CollectAndExport(Document rootDocument, string outputExcelPath)
         {
             _results.Clear();
-            _processedDocs.Clear();
-            _rootЭтажей = null;
 
-            _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
-            _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
+            // Находим подходящий SpecItem по имени файла документа
+            string docFileName = Path.GetFileName(rootDocument.FilePath);
+            var specItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
+            SpecData.SpecItem targetItem = default;
+            bool found = false;
+            foreach (var item in specItems)
+            {
+                if (string.Equals(item.FileName, docFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetItem = item;
+                    found = true;
+                    break;
+                }
+            }
 
-            SafeWriteLog("=== Started " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===\r\n", isFirstWrite: true);
-            SafeWriteLog("Root: Плоскость=" + _rootПлоскость + ", Этаж=" + _rootЭтаж + "\r\n");
+            SpecDebugService.Show();
+            SpecDebugService.Log("=== Started " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
 
-            ProcessDocument(rootDocument, 0);
+            if (found && targetItem.Этажи != null && targetItem.Этажи.Length > 0)
+            {
+                // Перебираем все этажи из SpecItem, как в GenerateSpec()
+                foreach (var floor in targetItem.Этажи)
+                {
+                    SpecDebugService.Log("  Processing floor: Этаж=" + floor.Этаж + ", Этажей=" + floor.Этажей);
+                    rootDocument.BeginChanges("");
+                    SetTextVariableValue(rootDocument, SpecData.плоскостьVarName, targetItem.Плоскость);
+                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажVarName, floor.Этаж);
+                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажейVarName, floor.Этажей);
+                    rootDocument.EndChanges();
+                    rootDocument.Changed = true;
+
+                    rootDocument.BeginChanges("");
+                    UpdateProductStructure(rootDocument);
+                    rootDocument.EndChanges();
+
+                    CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
+                }
+            }
+            else
+            {
+                // Fallback: читаем значения из переменных документа
+                _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
+                _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
+
+                SpecDebugService.Log("Плоскость=" + _rootПлоскость + ", Этаж=" + _rootЭтаж);
+                ProcessDocument(rootDocument, 0);
+            }
+
             var exporter = new ExcelExporter(outputExcelPath);
             exporter.Export(_results);
-            SafeWriteLog("=== Finished: " + _results.Count + " rows collected ===\r\n");
-        }
-
-        public List<SpecificationRow> Collect(Document rootDocument)
-        {
-            _results.Clear();
-            _processedDocs.Clear();
-            _rootЭтажей = null;
-            ProcessDocument(rootDocument, 0);
-            return new List<SpecificationRow>(_results);
+            SpecDebugService.Log("=== Finished: " + _results.Count + " rows collected ===");
         }
 
         private void ProcessDocument(Document doc, int level)
         {
             if (doc == null) return;
 
-            string docPath = doc.FileName ?? "";
-            if (!string.IsNullOrEmpty(docPath) && _processedDocs.Contains(docPath))
-            {
-                return;
-            }
-            if (!string.IsNullOrEmpty(docPath))
-            {
-                _processedDocs.Add(docPath);
-            }
-
-            string docName = string.IsNullOrEmpty(docPath) ? "(bezymyannyj)" : Path.GetFileName(docPath);
-
-            ExtractOwnRecordsFromBOM(doc, docName, level);
+            ExtractOwnRecordsFromBOM(doc, level);
 
             var fragments = doc.GetFragments();
             if (fragments != null)
@@ -282,27 +259,23 @@ namespace SpecCollector
                             ProcessDocument(subDoc, level + 1);
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                        Console.WriteLine("[Sobiratel] Error processing fragment " + frag.FilePath + ": " + ex.Message);
+                        // ignore
                     }
                 }
             }
         }
 
-        private void ExtractOwnRecordsFromBOM(Document doc, string docName, int level)
+        private void ExtractOwnRecordsFromBOM(Document doc, int level)
         {
             var productStructures = doc.GetProductStructures();
             if (productStructures == null || productStructures.Count == 0)
             {
-                SafeWriteLog("  -> NO ProductStructures found\r\n");
+                SpecDebugService.Log("  -> NO ProductStructures found");
                 return;
             }
 
-            foreach (var ps in productStructures)
-            {
-                SafeWriteLog("  -> PS: " + ps?.GetName(ModelObjectName.Name) + "\r\n");
-            }
 
             var productStructure = productStructures?.FirstOrDefault(t => t?.GetName(ModelObjectName.Name) == ProductStructureName);
             if (productStructure == null) return;
@@ -310,25 +283,71 @@ namespace SpecCollector
             var scheme = productStructure.GetScheme();
             var allRows = productStructure.GetAllRowElements();
 
-            SafeWriteLog("  -> GetAllRowElements: " + (allRows?.Count ?? 0) + " rows\r\n");
             if (allRows != null)
             {
                 foreach (var row in allRows)
                 {
-                    var specRow = ExtractRowFromRowElement(row, scheme, docName);
-                    _results.Add(specRow);
+                    var specRow = ExtractRowFromRowElement(row, scheme, doc);
+                    if(specRow != null)
+                    {
+                        _results.Add(specRow);
+                    }
+
                 }
             }
         }
 
-        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, string docName)
+        /// <summary>
+        /// Определяет, что запись принадлежит текущему документу (рекомендуемый способ).
+        /// Запись считается «своей», если она не поднята из фрагмента (SourceFragmentPath == null)
+        /// и при этом собрана по объекту текущего документа (SourceObject != null).
+        /// </summary>
+        private bool IsOwnBySourcePathAndObject(RowElement rowElement, Document doc)
         {
+            return rowElement.SourceFragmentPath == null && rowElement.SourceObject != null;
+        }
+
+        /// <summary>
+        /// Определяет, что запись принадлежит текущему документу по UID источника.
+        /// Если SourceRowElementUID == Guid.Empty, элемент не поднят из фрагмента — своя запись.
+        /// Простой способ, не зависит от строковых сравнений путей.
+        /// </summary>
+        private bool IsOwnBySourceRowElementUID(RowElement rowElement)
+        {
+            return rowElement.SourceRowElementUID == Guid.Empty;
+        }
+
+        /// <summary>
+        /// Определяет, что запись принадлежит текущему документу по UID первого уровня вложенности.
+        /// Если SourceRowElementUIDFirstLevel == Guid.Empty — элемент не поднят из фрагмента
+        /// на первом уровне вложенности. Удобно для многоуровневых сборок, чтобы отличать
+        /// прямые дочерние записи от записей, поднятых из глубоко вложенных фрагментов.
+        /// </summary>
+        private bool IsOwnBySourceFragmentFirstLevel(RowElement rowElement)
+        {
+            return rowElement.SourceRowElementUIDFirstLevel == Guid.Empty;
+        }
+
+        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, Document doc)
+        {
+            // Диагностическое логирование для анализа свойств RowElement
+            var sfp = rowElement.SourceFragmentPath;
+            var so = rowElement.SourceObject;
+            var sreUid = rowElement.SourceRowElementUID;
+            var sreUidFl = rowElement.SourceRowElementUIDFirstLevel;
+            var name = GetCellValueAsString(rowElement, scheme, "Наименование") ?? "(empty)";
+
+            if (!IsOwnBySourceRowElementUID(rowElement))
+            {
+                return null;
+            }
+
             var row = new SpecificationRow
             {
                 Плоскость = _rootПлоскость,
                 Этаж = _rootЭтаж,
                 Этажей = _rootЭтажей,
-                Источник = docName
+                Источник = Path.GetFileName(doc.FileName ?? "")
             };
 
             row.Артикул = GetCellValueAsString(rowElement, scheme, "Артикул");
@@ -398,6 +417,54 @@ namespace SpecCollector
             Variable var = doc.FindVariable(variableName);
             if (var == null) return null;
             return (int?)var.RealValue;
+        }
+
+        public List<SpecificationRow> Collect(Document rootDocument)
+        {
+            _results.Clear();
+
+            // Находим подходящий SpecItem по имени файла документа
+            string docFileName = Path.GetFileName(rootDocument.FilePath);
+            var specItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
+            SpecData.SpecItem targetItem = default;
+            bool found = false;
+            foreach (var item in specItems)
+            {
+                if (string.Equals(item.FileName, docFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetItem = item;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found && targetItem.Этажи != null && targetItem.Этажи.Length > 0)
+            {
+                foreach (var floor in targetItem.Этажи)
+                {
+                    rootDocument.BeginChanges("");
+                    SetTextVariableValue(rootDocument, SpecData.плоскостьVarName, targetItem.Плоскость);
+                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажVarName, floor.Этаж);
+                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажейVarName, floor.Этажей);
+                    rootDocument.EndChanges();
+                    rootDocument.Changed = true;
+
+                    rootDocument.BeginChanges("");
+                    UpdateProductStructure(rootDocument);
+                    rootDocument.EndChanges();
+
+                    CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
+                }
+            }
+            else
+            {
+                _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
+                _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
+                _rootЭтажей = GetIntVariableValue(rootDocument, SpecData.ЭтажейVarName);
+                ProcessDocument(rootDocument, 0);
+            }
+
+            return new List<SpecificationRow>(_results);
         }
     }
 }

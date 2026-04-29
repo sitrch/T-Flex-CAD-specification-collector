@@ -20,11 +20,11 @@ namespace SpecCollector
             this.Controls.Add(progressBar);
         }
 
-        public void AddMessage(string message)
+        public void AppendLog(string message)
         {
             if (this.InvokeRequired)
             {
-                this.BeginInvoke(new Action(() => AddMessage(message)));
+                 this.BeginInvoke(new Action(() => AppendLog(message)));
                 return;
             }
 
