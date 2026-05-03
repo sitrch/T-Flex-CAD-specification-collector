@@ -79,11 +79,74 @@ public bool IsRecordCreatedInCurrentFragment(BOMRecord record)
 - Объект `Fragment` = запись наследуется из дочернего фрагмента
 
 ## Дополнительные методы
-
-**StructureElementsManager** содержит метод для получения элементов, загруженных из фрагмента:
+### StructureElementsManager содержит метод для получения элементов, загруженных из фрагмента:
 ```csharp
 List<Element> GetElementsLoadedFromFragment(Fragment fragment)
 ```
+
+### Проверка цепочки фрагментов:
+```csharp
+IEnumerable<ObjectId> GetSourceFragmentIdChain(bool fragment3d)
+```
+
+---
+
+## Получение флага включения в спецификацию
+
+### Из BOMRecord (прямой способ)
+```csharp
+// Для спецификации сборочного документа
+bool includeInAssembly = bomRecord.IncludeToAssemblyBOM;
+
+// Для спецификации текущего документа  
+bool includeInCurrentDoc = bomRecord.IncludeToCurrentDocumentBOM;
+```
+**Источник**: `T_TFlex_Model_BOMRecord.htm` — свойства:
+- `IncludeToAssemblyBOM` (bool) — "Включать запись в спецификацию сборочного документа"
+- `IncludeToCurrentDocumentBOM` (bool) — "Включать запись в спецификацию текущего документа"
+
+### Через RowElement (внутренний доступ)
+`BOMRecord` содержит внутреннее поле `m_rowElem` типа `RowElement`:
+
+```csharp
+// Доступ через рефлексию
+var field = typeof(BOMRecord).GetField("m_rowElem", 
+    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+var rowElement = field.GetValue(bomRecord) as RowElement;
+
+if (rowElement != null)
+{
+    RowElementCell includeCell = rowElement.IncludeInDoc; // или IncludeInAssembly
+    bool includeValue = Convert.ToBoolean(includeCell.Value);
+}
+```
+
+### Свойства RowElement для включения
+- `IncludeInAssembly` (RowElementCell) — "Получить ячейку 'Включать в отчёты/спецификации текущего документа'"
+- `IncludeInDoc` (RowElementCell) — аналогично
+
+### Связь с настройками фрагмента
+Если нужно узнать, **почему** стоит флаг:
+- `Fragment2D.NeverIncludeInPS` (bool) — для PS (Product Structure)
+- `Fragment3D.IncludeInBOM` (`IncludeInBOMType`) — для BOM
+
+### IncludeInBOMType (перечисление)
+| Значение | Описание |
+|-----------|-----------|
+| `None` (0) | Не включать |
+| `Default` (1) | По умолчанию |
+| `WithoutEmbeddedElems` (2) | Без вложенных элементов |
+| `WithEmbeddedElems` (3) | С вложенными элементами |
+| `OnlyEmbeddedElems` (4) | Только вложенные элементы |
+
+### UseStatusType (перечисление для статуса по умолчанию)
+| Значение | Описание |
+|-----------|-----------|
+| `Default` (0) | По умолчанию |
+| `FragmentDocument` (1) | Использовать документ фрагмента |
+| `AssemblyDocument` (2) | Использовать документ сборки |
+
+**Вывод**: Для получения значения флага включения в спецификацию **используйте свойства `BOMRecord.IncludeToAssemblyBOM` или `IncludeToCurrentDocumentBOM`**.
 
 **Проверка цепочки фрагментов:**
 ```csharp

@@ -190,6 +190,9 @@ namespace SpecCollector
         {
             _results.Clear();
 
+            // Создаем новый лог-файл (перезаписываем)
+            System.IO.File.WriteAllText("collector.log1", $"[{DateTime.Now}] === START CollectAndExport ===\n");
+
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
             var specItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
@@ -255,7 +258,23 @@ namespace SpecCollector
             string currentDisplayName = GetDocumentDisplayName(doc);
             parentChain.Add(currentDisplayName);
 
-            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] >>> ENTER Level={level}, doc={currentDisplayName}, path={docPath}\n");
+            // Получить переменную $Артикул документа
+            string docArticul = GetDocumentArticul(doc);
+
+            // Логируем переменную "Спецификация" из документа при входе (числовая)
+            string docSpecValue = "(not found)";
+            try
+            {
+                var specVar = doc.FindVariable("Спецификация");
+                if (specVar != null)
+                {
+                    int specIntVal = (int)specVar.RealValue;
+                    docSpecValue = specIntVal.ToString();
+                }
+            }
+            catch { docSpecValue = "(error)"; }
+
+            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] >>> ENTER Level={level}, doc={currentDisplayName}, $Артикул={docArticul}, Спецификация={docSpecValue}, path={docPath}\n");
 
             var productStructures = doc.GetProductStructures();
             if (productStructures == null || productStructures.Count == 0)
@@ -282,6 +301,9 @@ namespace SpecCollector
 
             int ownCount = 0, borrowedCount = 0, skippedSpec = 0;
 
+            // Коллекция одобренных фрагментов (прошли IncludeInDoc) для фильтрации в ЭТАПЕ 2
+            var approvedFragments = new HashSet<object>(new ReferenceComparer());
+
             System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] Level={level}, allRows={allRows.Count}\n");
 
             // ЭТАП 1: Проход по BOM-строкам (один проход)
@@ -289,23 +311,31 @@ namespace SpecCollector
             {
                 var rowName = GetCellValueAsString(row, scheme, "Наименование") ?? "(null)";
                 var rowArt = GetCellValueAsString(row, scheme, "Артикул") ?? "(null)";
+                var incDoc = row.IncludeInDoc?.Value;
+                var incAssembly = row.IncludeInAssembly?.Value;
 
                 // Фильтрация ветвей: если строка не включена в спецификацию — пропускаем (кроме режима отладки)
                 if (!IncludeAllRows && !IsInSpecification(row))
                 {
                     skippedSpec++;
+
                     if (ShouldLogRow(rowArt))
                     {
                         string chainStr = string.Join(" → ", parentChain);
-                        // TFlexAPI monitoring
                         var srcFrag = row.SourceFragmentFirstLevel?.GetType().Name ?? "null";
                         var srcFrag3D = row.SourceFragment3DFirstLevel?.GetType().Name ?? "null";
                         var srcFragPath = row.SourceFragmentPath ?? "null";
                         var srcUIDFirst = row.SourceRowElementUIDFirstLevel.ToString();
                         var srcUID = row.SourceRowElementUID.ToString();
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    [{rowArt}] [{rowName}] SKIPPED (chain={chainStr}, IncludeInDoc=false, srcFrag={srcFrag}, srcFrag3D={srcFrag3D}, srcFragPath={srcFragPath}, srcUIDFirst={srcUIDFirst}, srcUID={srcUID})\n");
+                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] [{rowArt}] [{rowName}] SKIPPED | chain={chainStr} | IncludeInDoc={incDoc} | IncludeInAssembly={incAssembly} | srcFrag={srcFrag} | srcFrag3D={srcFrag3D} | srcFragPath={srcFragPath} | srcUIDFirst={srcUIDFirst} | srcUID={srcUID}\n");
                     }
                     continue;
+                }
+
+                // Если строка прошла фильтрацию и имеет ссылку на фрагмент — добавляем в одобренные
+                if (row.SourceFragmentFirstLevel != null)
+                {
+                    approvedFragments.Add(row.SourceFragmentFirstLevel);
                 }
 
 
@@ -316,14 +346,13 @@ namespace SpecCollector
                     if (ShouldLogRow(rowArt))
                     {
                         string chainStr = string.Join(" → ", parentChain);
-                        // TFlexAPI monitoring
                         var srcFrag = row.SourceFragmentFirstLevel?.GetType().Name ?? "null";
                         var srcFrag3D = row.SourceFragment3DFirstLevel?.GetType().Name ?? "null";
                         var srcFragPath = row.SourceFragmentPath ?? "null";
                         var srcUIDFirst = row.SourceRowElementUIDFirstLevel.ToString();
                         var srcUID = row.SourceRowElementUID.ToString();
                         var srcObj = row.SourceObject?.GetType().Name ?? "null";
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    [{rowArt}] [{rowName}] OWN ROW (chain={chainStr}, level={level}, srcFrag={srcFrag}, srcFrag3D={srcFrag3D}, srcFragPath={srcFragPath}, srcUIDFirst={srcUIDFirst}, srcUID={srcUID}, srcObj={srcObj})\n");
+                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] [{rowArt}] [{rowName}] OWN ROW | chain={chainStr} | level={level} | IncludeInDoc={incDoc} | IncludeInAssembly={incAssembly} | srcFrag={srcFrag} | srcFrag3D={srcFrag3D} | srcFragPath={srcFragPath} | srcUIDFirst={srcUIDFirst} | srcUID={srcUID} | srcObj={srcObj}\n");
                     }
 
                     var specRow = ExtractRowFromRowElement(row, scheme, doc);
@@ -331,7 +360,7 @@ namespace SpecCollector
                     {
                         _results.Add(specRow);
                         ownCount++;
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    --> ADDED to _results (total={_results.Count})\n");
+                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] [{rowArt}] ADDED to _results (total={_results.Count})\n");
                     }
                 }
                 else
@@ -341,36 +370,90 @@ namespace SpecCollector
                     if (ShouldLogRow(rowArt))
                     {
                         string chainStr = string.Join(" → ", parentChain);
-                        // TFlexAPI monitoring
                         var srcFrag = row.SourceFragmentFirstLevel?.GetType().Name ?? "null";
                         var srcFrag3D = row.SourceFragment3DFirstLevel?.GetType().Name ?? "null";
                         var srcFragPath = row.SourceFragmentPath ?? "null";
                         var srcUIDFirst = row.SourceRowElementUIDFirstLevel.ToString();
                         var srcUID = row.SourceRowElementUID.ToString();
                         var srcObj = row.SourceObject?.GetType().Name ?? "null";
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    [{rowArt}] [{rowName}] BORROWED (chain={chainStr}, SRE_UID={row.SourceRowElementUID}, srcFrag={srcFrag}, srcFrag3D={srcFrag3D}, srcFragPath={srcFragPath}, srcUIDFirst={srcUIDFirst}, srcUID={srcUID}, srcObj={srcObj})\n");
+                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] [{rowArt}] [{rowName}] BORROWED | chain={chainStr} | IncludeInDoc={incDoc} | IncludeInAssembly={incAssembly} | SRE_UID={row.SourceRowElementUID} | srcFrag={srcFrag} | srcFrag3D={srcFrag3D} | srcFragPath={srcFragPath} | srcUIDFirst={srcUIDFirst} | srcUID={srcUID} | srcObj={srcObj}\n");
                     }
                 }
             }
 
             // ЭТАП 2: Проход по фрагментам документа (один проход)
+            // Фильтрация: обходим только те фрагменты, чьи BOM-строки прошли IncludeInDoc в ЭТАПЕ 1
             var fragments = doc.GetFragments();
             if (fragments != null)
             {
-                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] Level={level}: Processing {fragments.Count} fragments...\n");
+                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] Level={level}: Processing {fragments.Count} fragments (approved={approvedFragments.Count})...\n");
                 foreach (var frag in fragments)
                 {
                     if (string.IsNullOrEmpty(frag.FilePath))
                     {
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment SKIPPED (empty FilePath)\n");
+                        continue;
+                    }
+
+                    // Проверка: фрагмент должен быть в одобренных (кроме режима IncludeAllRows)
+                    if (!IncludeAllRows && !approvedFragments.Contains(frag))
+                    {
+                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment BRANCH CUT: {frag.FilePath} (not in approved fragments, IncludeInDoc=false in BOM)\n");
                         continue;
                     }
 
                     try
                     {
                         System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment: {frag.FilePath}\n");
+
+                        // Логирование свойства NeverIncludeInPS через рефлексию (Fragment2D может быть недоступен)
+                        try
+                        {
+                            var fragType = frag.GetType();
+                            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment type: {fragType.FullName}\n");
+                            var neverIncProp = fragType.GetProperty("NeverIncludeInPS");
+                            if (neverIncProp != null)
+                            {
+                                bool neverIncludePS = (bool)neverIncProp.GetValue(frag);
+                                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    NeverIncludeInPS={neverIncludePS}\n");
+                            }
+                            else
+                            {
+                                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    NeverIncludeInPS: (property not found on {fragType.Name})\n");
+                            }
+                        }
+                        catch (Exception exFragProp)
+                        {
+                            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    NeverIncludeInPS: ERROR({exFragProp.Message})\n");
+                        }
+
                         frag.Regenerate(true);
                         Document subDoc = frag.GetFragmentDocument(true);
+
+                        // Логирование переменной "Спецификация" из документа фрагмента (числовая переменная)
+                        if (subDoc != null)
+                        {
+                            try
+                            {
+                                var specVar = subDoc.FindVariable("Спецификация");
+                                string specVarValue;
+                                if (specVar != null)
+                                {
+                                    int specIntVal = (int)specVar.RealValue;
+                                    specVarValue = specIntVal.ToString();
+                                }
+                                else
+                                {
+                                    specVarValue = "(not found)";
+                                }
+                                string fragArticul = GetDocumentArticul(subDoc);
+                                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment doc: Артикул={fragArticul} | Спецификация={specVarValue}\n");
+                            }
+                            catch (Exception exDocVar)
+                            {
+                                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    Fragment doc vars: ERROR({exDocVar.Message})\n");
+                            }
+                        }
+
                         if (subDoc != null)
                         {
                             System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}]    --> Recursing into: {GetDocumentDisplayName(subDoc)}\n");
@@ -388,13 +471,13 @@ namespace SpecCollector
                 }
             }
 
-            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] Level={level} summary: own={ownCount} borrowed={borrowedCount} skippedSpec={skippedSpec}, total_results={_results.Count}\n");
+            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] Level={level} summary | own={ownCount} | borrowed={borrowedCount} | skippedSpec={skippedSpec} | total_results={_results.Count}\n");
 
             // Удалить текущий объект из цепочки перед выходом
             if (parentChain.Count > 0)
                 parentChain.RemoveAt(parentChain.Count - 1);
 
-            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] <<< EXIT Level={level}, doc={currentDisplayName}\n");
+            System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] <<< EXIT Level={level}, doc={currentDisplayName}, $Артикул={docArticul}\n");
         }
 
         private bool IsInSpecification(RowElement rowElement)
@@ -431,6 +514,26 @@ namespace SpecCollector
             var incDoc = rowElement.IncludeInDoc?.Value;
             row.Спецификация = (incDoc != null && (bool)incDoc) ? "1" : "0";
             row.МестоУстановки = GetCellValueAsString(rowElement, scheme, "Место установки");
+
+            // Логирование для отслеживания правильности определения флага включения в спецификацию
+            if (ShouldLogRow(row.Артикул))
+            {
+                // Также логируем переменную "Спецификация" из самого документа (числовая переменная)
+                string docSpecVarValue = "(not found)";
+                try
+                {
+                    var docSpecVar = doc.FindVariable("Спецификация");
+                    if (docSpecVar != null)
+                    {
+                        int docSpecIntVal = (int)docSpecVar.RealValue;
+                        docSpecVarValue = docSpecIntVal.ToString();
+                    }
+                }
+                catch { docSpecVarValue = "(error)"; }
+
+                var incAssembly = rowElement.IncludeInAssembly?.Value;
+                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] [{row.Артикул}] [{row.Наименование}] EXTRACT | IncludeInDoc={incDoc} | IncludeInAssembly={incAssembly} | Спецификация={row.Спецификация} | doc$Спецификация={docSpecVarValue}\n");
+            }
 
             return row;
         }
@@ -495,13 +598,37 @@ namespace SpecCollector
         }
 
         /// <summary>
+        /// Получает значение переменной $Артикул документа.
+        /// </summary>
+        private string GetDocumentArticul(Document doc)
+        {
+            try
+            {
+                Variable var = doc.FindVariable("$Артикул");
+                if (var != null && !string.IsNullOrEmpty(var.TextValue))
+                {
+                    return var.TextValue;
+                }
+            }
+            catch { }
+            return "(null)";
+        }
+
+        /// <summary>
         /// Проверяет, нужно ли логировать строку (по артикулу)
+        /// По умолчанию логируются только строки, содержащие "F50.0421"
         /// </summary>
         private bool ShouldLogRow(string rowArt)
         {
-            if (string.IsNullOrEmpty(LogFilterArticul)) return true; // логировать всё
+            // Если задан конкретный фильтр — используем его
+            if (!string.IsNullOrEmpty(LogFilterArticul))
+            {
+                if (string.IsNullOrEmpty(rowArt)) return false;
+                return rowArt.Contains(LogFilterArticul);
+            }
+            // По умолчанию логируется только F50.0421
             if (string.IsNullOrEmpty(rowArt)) return false;
-            return rowArt.Contains(LogFilterArticul);
+            return rowArt.Contains("F50.0421");
         }
 
         private int? GetIntVariableValue(Document doc, string variableName)
@@ -514,6 +641,9 @@ namespace SpecCollector
         public List<SpecificationRow> Collect(Document rootDocument)
         {
             _results.Clear();
+
+            // Создаем новый лог-файл (перезаписываем)
+            System.IO.File.WriteAllText("collector.log1", $"[{DateTime.Now}] === START Collect ===\n");
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
@@ -557,6 +687,22 @@ namespace SpecCollector
             }
 
             return new List<SpecificationRow>(_results);
+        }
+    }
+
+    /// <summary>
+    /// Сравнитель по ссылке на объект (reference equality) для HashSet.
+    /// </summary>
+    internal class ReferenceComparer : IEqualityComparer<object>
+    {
+        public new bool Equals(object x, object y)
+        {
+            return ReferenceEquals(x, y);
+        }
+
+        public int GetHashCode(object obj)
+        {
+            return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
         }
     }
 }
