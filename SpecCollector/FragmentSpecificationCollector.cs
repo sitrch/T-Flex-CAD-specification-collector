@@ -21,7 +21,7 @@ namespace SpecCollector
         private int? _rootЭтаж;
         private int? _rootЭтажей;
 
-        public bool OnlyBOMGenerate = false;
+        //public bool OnlyBOMGenerate = false;
         public bool IncludeAllRows = false; // Если true — отключает фильтрацию по IncludeInDoc (для отладки)
         private string _path;
 
