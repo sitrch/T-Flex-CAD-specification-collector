@@ -23,6 +23,7 @@ namespace SpecCollector
 
         //public bool OnlyBOMGenerate = false;
         private string _path;
+        private LogService _logService;
 
         public void GenerateSpec()
         {
@@ -34,6 +35,8 @@ namespace SpecCollector
 
             _path = doc.FilePath;
 
+            _logService = new LogService(Path.Combine(_path, "collector.log1"));
+
             string fn_AllSpecs = Path.Combine(_path, "Спецификации.xlsx");
 
             var allData = new List<Dictionary<string, object>>();
@@ -44,6 +47,8 @@ namespace SpecCollector
             CollectSpecData(SpecData.Изделия4, allData);
 
             ExportToMultipleSheets(fn_AllSpecs, allData);
+
+            _logService.Flush();
         }
 
         private void CollectSpecData(SpecData.SpecItem изделие, List<Dictionary<string, object>> allData)
@@ -171,6 +176,7 @@ namespace SpecCollector
         public void CollectAndExport(Document rootDocument, string outputExcelPath)
         {
             _results.Clear();
+            _logService = new LogService(Path.Combine(rootDocument.FilePath, "collector.log1"));
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
@@ -217,6 +223,8 @@ namespace SpecCollector
 
             var exporter = new ExcelExporter(outputExcelPath);
             exporter.Export(_results);
+
+            _logService.Flush();
         }
 
         private void ProcessDocument(Document doc, int level, List<string> parentChain = null)
@@ -278,7 +286,7 @@ namespace SpecCollector
                     if (docSpecValue == "1")
                     {
                         string chainStr = string.Join(" → ", parentChain);
-                        System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] MISMATCH | IncludeInDoc=false, но Спецификация=1 | [{rowArt}] [{rowName}] chain={chainStr} level={level}\n");
+                        _logService.Log($"MISMATCH | IncludeInDoc=false, но Спецификация=1 | [{rowArt}] [{rowName}] chain={chainStr} level={level}");
                     }
                     continue;
                 }
@@ -385,7 +393,7 @@ namespace SpecCollector
 
             if (docSpecVarValue != "1")
             {
-                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] MISMATCH | IncludeInDoc=true, но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]\n");
+                _logService.Log($"MISMATCH | IncludeInDoc=true, но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]");
             }
 
             return row;
@@ -460,6 +468,7 @@ namespace SpecCollector
         public List<SpecificationRow> Collect(Document rootDocument)
         {
             _results.Clear();
+            _logService = new LogService(Path.Combine(rootDocument.FilePath, "collector.log1"));
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
@@ -502,6 +511,7 @@ namespace SpecCollector
                 ProcessDocument(rootDocument, 0);
             }
 
+            _logService.Flush();
             return new List<SpecificationRow>(_results);
         }
     }

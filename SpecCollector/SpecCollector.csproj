@@ -63,6 +63,7 @@
     <Compile Include="FileLockedDialog.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="LogService.cs" />
     <Compile Include="FragmentSpecificationCollector.cs" />
     <Compile Include="SpecData.cs" />
     <Compile Include="ExcelMiniDataBlock.cs" />
