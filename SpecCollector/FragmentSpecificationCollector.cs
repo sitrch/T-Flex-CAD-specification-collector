@@ -22,7 +22,6 @@ namespace SpecCollector
         private int? _rootЭтажей;
 
         //public bool OnlyBOMGenerate = false;
-        public bool IncludeAllRows = false; // Если true — отключает фильтрацию по IncludeInDoc (для отладки)
         private string _path;
 
         public void GenerateSpec()
@@ -272,8 +271,8 @@ namespace SpecCollector
                 var rowName = GetCellValueAsString(row, scheme, "Наименование") ?? "(null)";
                 var rowArt = GetCellValueAsString(row, scheme, "Артикул") ?? "(null)";
 
-                // Фильтрация ветвей: если строка не включена в спецификацию — пропускаем (кроме режима отладки)
-                if (!IncludeAllRows && !IsInSpecification(row))
+                // Фильтрация ветвей: если строка не включена в спецификацию — пропускаем
+                if (!IsInSpecification(row))
                 {
                     // Лог только при несовпадении: IncludeInDoc=false, но Спецификация=="1"
                     if (docSpecValue == "1")
@@ -315,8 +314,8 @@ namespace SpecCollector
                         continue;
                     }
 
-                    // Проверка: фрагмент должен быть в одобренных (кроме режима IncludeAllRows)
-                    if (!IncludeAllRows && !approvedFragments.Contains(frag))
+                    // Проверка: фрагмент должен быть в одобренных
+                    if (!approvedFragments.Contains(frag))
                     {
                         continue;
                     }
