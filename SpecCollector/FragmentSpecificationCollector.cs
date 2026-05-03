@@ -35,7 +35,7 @@ namespace SpecCollector
 
             _path = doc.FilePath;
 
-            _logService = new LogService(Path.Combine(_path, "collector.log1"));
+            _logService = new LogService(_path);
 
             string fn_AllSpecs = Path.Combine(_path, "Спецификации.xlsx");
 
@@ -176,7 +176,7 @@ namespace SpecCollector
         public void CollectAndExport(Document rootDocument, string outputExcelPath)
         {
             _results.Clear();
-            _logService = new LogService(Path.Combine(rootDocument.FilePath, "collector.log1"));
+            _logService = new LogService(rootDocument.FilePath);
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
@@ -468,7 +468,7 @@ namespace SpecCollector
         public List<SpecificationRow> Collect(Document rootDocument)
         {
             _results.Clear();
-            _logService = new LogService(Path.Combine(rootDocument.FilePath, "collector.log1"));
+            _logService = new LogService(rootDocument.FilePath);
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
