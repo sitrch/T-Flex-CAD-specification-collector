@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using System.Windows.Forms;
 
-namespace SpecCollector
+namespace MyDebugLibrary
 {
     public partial class DebugProgressForm : Form
     {
@@ -20,15 +20,16 @@ namespace SpecCollector
             this.Controls.Add(progressBar);
         }
 
-        public void AppendLog(string message)
+        public void AddMessage(string message)
         {
             if (this.InvokeRequired)
             {
-                 this.BeginInvoke(new Action(() => AppendLog(message)));
+                this.BeginInvoke(new Action(() => AddMessage(message)));
                 return;
             }
 
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+            // Автоматическая прокрутка к последней строке
             txtLog.SelectionStart = txtLog.Text.Length;
             txtLog.ScrollToCaret();
         }
@@ -41,8 +42,10 @@ namespace SpecCollector
                 return;
             }
 
+            // Ограничение 0-100, чтобы не "уронить" ProgressBar
             int val = Math.Max(0, Math.Min(100, percent));
             progressBar.Value = val;
         }
+
     }
 }

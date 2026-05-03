@@ -1,0 +1,43 @@
+# Сгенерированные файлы и кэш .NET
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.userosscache
+*.sln.doccache
+*.suo
+
+# Зависимости и пакеты
+packages/
+*.nupkg
+
+# Файлы сборки и публикации
+publish/
+
+# Логи и временные файлы
+*.log
+*.tmp
+tmp/
+temp/
+
+# Файлы системы Cline/MCP (чтобы не зацикливался)
+.clinedata/
+memory.json
+*.mcp_cache
+
+# Изображения и тяжелые ассеты
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.pdf
+*.zip
+*.7z
+
+# Специфичные для T-FLEX
+*.grb
+*.grs
+*.gid

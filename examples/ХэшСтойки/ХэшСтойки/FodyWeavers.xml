@@ -1,0 +1,3 @@
+<Weavers xmlns:xsi="http://www.w3.org" xsi:noNamespaceSchemaLocation="FodyWeavers.xsd">
+   <Costura IncludeAssemblies="MiniExcel" />
+</Weavers>
