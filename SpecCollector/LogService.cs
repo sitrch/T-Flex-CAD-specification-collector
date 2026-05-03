@@ -71,7 +71,7 @@ namespace SpecCollector
                 }
                 else
                 {
-                    lines.Add($"[{entry.FirstTime}] {entry.Message} [x{entry.Count}]");
+                    lines.Add($"[{entry.FirstTime}] [x{entry.Count}] {entry.Message}");
                 }
             }
 
