@@ -60,9 +60,6 @@ namespace SpecCollector
         /// <summary>Заполнения площадь</summary>
         public double? ЗаполненияПлощадь { get; set; }
 
-        /// <summary>Спецификация</summary>
-        public string Спецификация { get; set; }
-
         /// <summary>Место установки</summary>
         public string МестоУстановки { get; set; }
 
@@ -77,7 +74,6 @@ namespace SpecCollector
                 { "Плоскость", (object)Плоскость ?? DBNull.Value },
                 { "Этаж", Этаж.HasValue ? (object)Этаж.Value : DBNull.Value },
                 { "Раздел", (object)Раздел ?? DBNull.Value },
-                { "Спецификация", (object)Спецификация ?? DBNull.Value },
                 { "Источник", (object)Источник ?? DBNull.Value },
                 { "Место установки", (object)МестоУстановки ?? DBNull.Value },
                 { "Артикул", (object)Артикул ?? DBNull.Value },
@@ -106,7 +102,6 @@ namespace SpecCollector
                 "Плоскость",
                 "Этаж",
                 "Раздел",
-                "Спецификация",
                 "Источник",
                 "Место установки",
                 "Артикул",

@@ -145,12 +145,6 @@ namespace SpecCollector
 
                         foreach (var row in data)
                         {
-                            // Пропускаем строки, где Спецификация != "1" (для листов кроме "Спецификация")
-                            if (!row.ContainsKey("Спецификация") || row["Спецификация"]?.ToString() != "1")
-                            {
-                                continue;
-                            }
-
                             string razdel = row.ContainsKey("Раздел") ? row["Раздел"]?.ToString() : null;
                             string groupName = "Другое";
 
@@ -239,12 +233,6 @@ namespace SpecCollector
         
         foreach (var row in data)
         {
-            // Filter by Спецификация == "1" for all rows
-            if (!row.TryGetValue("Спецификация", out var spec) || spec?.ToString() != "1")
-            {
-                continue;
-            }
-            
             // Get Раздел value
             if (!row.TryGetValue("Раздел", out var sectionObj) || sectionObj == null)
             {

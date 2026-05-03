@@ -368,11 +368,9 @@ namespace SpecCollector
             row.ЗаполненияВысота = GetCellValueAsDouble(rowElement, scheme, "Заполнения высота");
             row.ЗаполненияТолщина = GetCellValueAsDouble(rowElement, scheme, "Заполнения толщина");
             row.ЗаполненияПлощадь = GetCellValueAsDouble(rowElement, scheme, "Заполнения площадь");
-            var incDoc = rowElement.IncludeInDoc?.Value;
-            row.Спецификация = (incDoc != null && (bool)incDoc) ? "1" : "0";
             row.МестоУстановки = GetCellValueAsString(rowElement, scheme, "Место установки");
 
-            // Лог только при несовпадении IncludeInDoc и переменной Спецификация из документа
+            // Лог несовпадения IncludeInDoc и переменной Спецификация из документа
             string docSpecVarValue = null;
             try
             {
@@ -385,13 +383,9 @@ namespace SpecCollector
             }
             catch { }
 
-            if (row.Спецификация == "1" && docSpecVarValue != "1")
+            if (docSpecVarValue != "1")
             {
-                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] MISMATCH | IncludeInDoc=true (Спецификация=1), но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]\n");
-            }
-            else if (row.Спецификация == "0" && docSpecVarValue == "1")
-            {
-                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] MISMATCH | IncludeInDoc=false (Спецификация=0), но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]\n");
+                System.IO.File.AppendAllText("collector.log1", $"[{DateTime.Now}] MISMATCH | IncludeInDoc=true, но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]\n");
             }
 
             return row;
