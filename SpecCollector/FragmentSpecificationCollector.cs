@@ -549,52 +549,34 @@ namespace SpecCollector
         }
 
         /// <summary>
-        /// Пример использования ZahvatkiReader для получения данных из файла Захватки.xlsx.
+        /// Пример использования PhaseReader для получения данных из файла Захватки.xlsx.
         /// </summary>
-        public void Example_ReadZahvatki(Document doc)
+        public void Example_ReadPhases(Document doc)
         {
             if (doc == null)
                 throw new ArgumentNullException(nameof(doc));
 
             try
             {
-                // Создаем reader, передавая путь к активному документу
-                var reader = new ZahvatkiReader(doc.FilePath);
+                var reader = new PhaseReader(doc.FilePath);
 
                 ___DisplayService.Log($"Файл Захватки.xlsx: {reader.FilePath}");
-                ___DisplayService.Log($"Доступные плоскости (листы): {string.Join(", ", reader.SheetNames)}");
 
-                // Пример: получаем значение для плоскости "(5-1)-(5-6)", стойка 7, этаж 50
-                string plane = "(5-1)-(5-6)";
-                string rack = "с7"; // или "C7" - регистр не важен
+                // Пример: фаза "(5-1)-(5-6)", моллион м7, этаж 50
+                string phase = "(5-1)-(5-6)";
+                string mullion = "м7";
                 int floor = 50;
 
-                if (reader.HasPlane(plane))
-                {
-                    var value = reader.GetCellValue(plane, rack, floor);
-                    ___DisplayService.Log($"Плоскость={plane}, Стойка={rack}, Этаж={floor} -> Значение: {value}");
+                var value = reader.GetValue(phase, mullion, floor);
+                ___DisplayService.Log($"Фаза={phase}, Моллион={mullion}, Этаж={floor} -> Значение: {value}");
 
-                    // Также можно получить как строку, число и т.д.
-                    string asString = reader.GetCellValueAsString(plane, rack, floor);
-                    double? asDouble = reader.GetCellValueAsDouble(plane, rack, floor);
-                    int? asInt = reader.GetCellValueAsInt(plane, rack, floor);
+                string asString = reader.GetString(phase, mullion, floor);
+                double? asDouble = reader.GetDouble(phase, mullion, floor);
+                int? asInt = reader.GetInt(phase, mullion, floor);
 
-                    ___DisplayService.Log($"  AsString: {asString}");
-                    ___DisplayService.Log($"  AsDouble: {asDouble}");
-                    ___DisplayService.Log($"  AsInt: {asInt}");
-
-                    // Получить все доступные этажи для плоскости
-                    var floors = reader.GetAvailableFloors(plane);
-                    ___DisplayService.Log($"  Доступные этажи: {string.Join(", ", floors)}");
-
-                    // Получить все доступные стойки для этажа
-                    var racks = reader.GetAvailableRacks(plane, floor);
-                    ___DisplayService.Log($"  Доступные стойки на этаже {floor}: {string.Join(", ", racks)}");
-                }
-                else
-                {
-                    ___DisplayService.Log($"Плоскость '{plane}' не найдена в файле");
-                }
+                ___DisplayService.Log($"  String: {asString}");
+                ___DisplayService.Log($"  Double: {asDouble}");
+                ___DisplayService.Log($"  Int: {asInt}");
             }
             catch (FileNotFoundException ex)
             {
