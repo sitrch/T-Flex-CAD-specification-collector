@@ -8,8 +8,8 @@ using TFlex;
 namespace SpecCollector
 {
     /// <summary>
-    /// Класс для чтения файла Захватки.xlsx (фаз).
-    /// Строка = Этаж, Столбец = Mullion (стойка).
+    /// Класс для чтения файла Захватки.xlsx.
+    /// Строка = Этаж, Столбец = Mullion (моллион/стойка).
     /// </summary>
     public class PhaseReader
     {
@@ -48,17 +48,14 @@ namespace SpecCollector
                     continue;
                 }
 
-                // Header row: Этаж, м1, м2, м3...
                 var header = rows[0] as IDictionary<string, object>;
                 if (header == null) continue;
 
-                // Mullion columns start with "м" (м1, м2...). Case-insensitive.
                 var mullionCols = header.Keys
                     .Where(k => k != null && k.ToString().StartsWith("м", StringComparison.OrdinalIgnoreCase))
                     .Select(k => k.ToString())
                     .ToList();
 
-                // Data rows
                 for (int i = 1; i < rows.Count; i++)
                 {
                     var row = rows[i] as IDictionary<string, object>;
@@ -84,44 +81,24 @@ namespace SpecCollector
         }
 
         /// <summary>
-        /// Возвращает значение ячейки на пересечении этажа (строка) и моллиона (столбец).
+        /// Возвращает значение ячейки как строку на пересечении этажа (строка) и моллиона (столбец).
         /// </summary>
-        /// <param name="phase">Имя фазы (лист книги)</param>
+        /// <param name="plane">Имя плоскости (лист книги)</param>
         /// <param name="mullion">Моллион/стойка, например "м7" или "М7"</param>
         /// <param name="floor">Этаж (значение в столбце "Этаж")</param>
-        /// <returns>Значение ячейки или null</returns>
-        public object GetValue(string phase, string mullion, int floor)
+        /// <returns>Значение ячейки как строка или null</returns>
+        public string GetString(string plane, string mullion, int floor)
         {
-            if (string.IsNullOrEmpty(phase)) throw new ArgumentException(nameof(phase));
-            if (string.IsNullOrEmpty(mullion)) throw new ArgumentException(nameof(mullion));
+            if (string.IsNullOrEmpty(plane)) return null;
+            if (string.IsNullOrEmpty(mullion)) return null;
 
             var key = mullion.ToLowerInvariant();
 
-            if (!_data.TryGetValue(phase, out var sheet)) return null;
+            if (!_data.TryGetValue(plane, out var sheet)) return null;
             if (!sheet.TryGetValue(floor, out var row)) return null;
             if (!row.TryGetValue(key, out var value)) return null;
 
-            return value;
-        }
-
-        public string GetString(string phase, string mullion, int floor) => GetValue(phase, mullion, floor)?.ToString();
-
-        public double? GetDouble(string phase, string mullion, int floor)
-        {
-            var v = GetValue(phase, mullion, floor);
-            if (v == null) return null;
-            if (v is double d) return d;
-            if (v is int i) return i;
-            if (v is float f) return f;
-            if (decimal.TryParse(v.ToString(), out var dec)) return (double)dec;
-            if (double.TryParse(v.ToString().Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var res)) return res;
-            return null;
-        }
-
-        public int? GetInt(string phase, string mullion, int floor)
-        {
-            var d = GetDouble(phase, mullion, floor);
-            return d.HasValue ? (int)d.Value : (int?)null;
+            return value?.ToString();
         }
 
         public void Reload() { _data.Clear(); Load(); }

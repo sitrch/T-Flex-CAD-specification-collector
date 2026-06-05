@@ -562,21 +562,13 @@ namespace SpecCollector
 
                 ___DisplayService.Log($"Файл Захватки.xlsx: {reader.FilePath}");
 
-                // Пример: фаза "(5-1)-(5-6)", моллион м7, этаж 50
-                string phase = "(5-1)-(5-6)";
+                // Пример: плоскость "(5-1)-(5-6)", моллион м7, этаж 50
+                string plane = "(5-1)-(5-6)";
                 string mullion = "м7";
                 int floor = 50;
 
-                var value = reader.GetValue(phase, mullion, floor);
-                ___DisplayService.Log($"Фаза={phase}, Моллион={mullion}, Этаж={floor} -> Значение: {value}");
-
-                string asString = reader.GetString(phase, mullion, floor);
-                double? asDouble = reader.GetDouble(phase, mullion, floor);
-                int? asInt = reader.GetInt(phase, mullion, floor);
-
-                ___DisplayService.Log($"  String: {asString}");
-                ___DisplayService.Log($"  Double: {asDouble}");
-                ___DisplayService.Log($"  Int: {asInt}");
+                string value = reader.GetString(plane, mullion, floor);
+                ___DisplayService.Log($"Плоскость={plane}, Моллион={mullion}, Этаж={floor} -> Значение: {value}");
             }
             catch (FileNotFoundException ex)
             {
