@@ -64,6 +64,10 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="LogService.cs" />
+    <Compile Include="___DisplayService.cs" />
+    <Compile Include="DisplayProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="FragmentSpecificationCollector.cs" />
     <Compile Include="SpecData.cs" />
     <Compile Include="ExcelMiniDataBlock.cs" />

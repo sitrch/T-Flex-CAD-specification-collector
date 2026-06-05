@@ -53,6 +53,22 @@ namespace SpecCollector
         }
 
         /// <summary>
+        /// Возвращает все накопленные записи в виде форматированного текста.
+        /// </summary>
+        public string GetLogText()
+        {
+            var lines = new System.Collections.Generic.List<string>();
+            foreach (var entry in _entries.Values.OrderBy(e => e.FirstTime))
+            {
+                if (entry.Count == 1)
+                    lines.Add($"[{entry.FirstTime:HH:mm:ss}] {entry.Message}");
+                else
+                    lines.Add($"[{entry.FirstTime:HH:mm:ss}] [x{entry.Count}] {entry.Message}");
+            }
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        /// <summary>
         /// Записать все накопленные записи в файл лога.
         /// Файл перезаписывается: шапка + все записи.
         /// </summary>

@@ -33,6 +33,9 @@ namespace SpecCollector
                 throw new InvalidOperationException("No active T-FLEX document.");
             }
 
+            ___DisplayService.Show();
+            ___DisplayService.Log("Старт GenerateSpec");
+
             _path = doc.FilePath;
 
             _logService = new LogService(_path);
@@ -47,6 +50,10 @@ namespace SpecCollector
             CollectSpecData(SpecData.Изделия4, allData);
 
             ExportToMultipleSheets(fn_AllSpecs, allData);
+
+            ___DisplayService.Log($"Завершено. Строк: {allData.Count}");
+            ___DisplayService.Log("--- LogService ---");
+            ___DisplayService.Log(_logService.GetLogText());
 
             _logService.Flush();
         }
@@ -63,6 +70,7 @@ namespace SpecCollector
 
             foreach (var floor in изделие.Этажи)
             {
+                ___DisplayService.Log($"Set variables: плоскость={изделие.Плоскость}, этаж={floor.Этаж}");
                 doc.BeginChanges("");
                 SetTextVariableValue(doc, SpecData.плоскостьVarName, изделие.Плоскость);
                 SetIntegerVariableValue(doc, SpecData.ЭтажVarName, floor.Этаж);
@@ -73,6 +81,8 @@ namespace SpecCollector
                 doc.BeginChanges("");
                 UpdateProductStructure(doc);
                 doc.EndChanges();
+
+                ___DisplayService.Log($"Формирование спецификации: плоскость={изделие.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
 
                 CollectFromDocument(doc, изделие.Плоскость, floor.Этаж, floor.Этажей);
 
@@ -175,6 +185,9 @@ namespace SpecCollector
 
         public void CollectAndExport(Document rootDocument, string outputExcelPath)
         {
+            ___DisplayService.Show();
+            ___DisplayService.Log("Старт CollectAndExport");
+
             _results.Clear();
             _logService = new LogService(rootDocument.FilePath);
 
@@ -209,6 +222,8 @@ namespace SpecCollector
                     UpdateProductStructure(rootDocument);
                     rootDocument.EndChanges();
 
+                    ___DisplayService.Log($"Сбор: плоскость={targetItem.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
+
                     CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
                 }
             }
@@ -218,11 +233,17 @@ namespace SpecCollector
                 _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
                 _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
 
+                ___DisplayService.Log($"Сбор (fallback): плоскость={_rootПлоскость}, этаж={_rootЭтаж}");
+
                 ProcessDocument(rootDocument, 0);
             }
 
             var exporter = new ExcelExporter(outputExcelPath);
             exporter.Export(_results);
+
+            ___DisplayService.Log($"Завершено. Строк: {_results.Count}");
+            ___DisplayService.Log("--- LogService ---");
+            ___DisplayService.Log(_logService.GetLogText());
 
             _logService.Flush();
         }
@@ -467,6 +488,9 @@ namespace SpecCollector
 
         public List<SpecificationRow> Collect(Document rootDocument)
         {
+            ___DisplayService.Show();
+            ___DisplayService.Log("Старт Collect");
+
             _results.Clear();
             _logService = new LogService(rootDocument.FilePath);
 
@@ -500,6 +524,8 @@ namespace SpecCollector
                     UpdateProductStructure(rootDocument);
                     rootDocument.EndChanges();
 
+                    ___DisplayService.Log($"Сбор: плоскость={targetItem.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
+
                     CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
                 }
             }
@@ -508,8 +534,15 @@ namespace SpecCollector
                 _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
                 _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
                 _rootЭтажей = GetIntVariableValue(rootDocument, SpecData.ЭтажейVarName);
+
+                ___DisplayService.Log($"Сбор (fallback): плоскость={_rootПлоскость}, этаж={_rootЭтаж}");
+
                 ProcessDocument(rootDocument, 0);
             }
+
+            ___DisplayService.Log($"Завершено. Строк: {_results.Count}");
+            ___DisplayService.Log("--- LogService ---");
+            ___DisplayService.Log(_logService.GetLogText());
 
             _logService.Flush();
             return new List<SpecificationRow>(_results);
