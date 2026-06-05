@@ -547,6 +547,64 @@ namespace SpecCollector
             _logService.Flush();
             return new List<SpecificationRow>(_results);
         }
+
+        /// <summary>
+        /// Пример использования ZahvatkiReader для получения данных из файла Захватки.xlsx.
+        /// </summary>
+        public void Example_ReadZahvatki(Document doc)
+        {
+            if (doc == null)
+                throw new ArgumentNullException(nameof(doc));
+
+            try
+            {
+                // Создаем reader, передавая путь к активному документу
+                var reader = new ZahvatkiReader(doc.FilePath);
+
+                ___DisplayService.Log($"Файл Захватки.xlsx: {reader.FilePath}");
+                ___DisplayService.Log($"Доступные плоскости (листы): {string.Join(", ", reader.SheetNames)}");
+
+                // Пример: получаем значение для плоскости "(5-1)-(5-6)", стойка 7, этаж 50
+                string plane = "(5-1)-(5-6)";
+                string rack = "с7"; // или "C7" - регистр не важен
+                int floor = 50;
+
+                if (reader.HasPlane(plane))
+                {
+                    var value = reader.GetCellValue(plane, rack, floor);
+                    ___DisplayService.Log($"Плоскость={plane}, Стойка={rack}, Этаж={floor} -> Значение: {value}");
+
+                    // Также можно получить как строку, число и т.д.
+                    string asString = reader.GetCellValueAsString(plane, rack, floor);
+                    double? asDouble = reader.GetCellValueAsDouble(plane, rack, floor);
+                    int? asInt = reader.GetCellValueAsInt(plane, rack, floor);
+
+                    ___DisplayService.Log($"  AsString: {asString}");
+                    ___DisplayService.Log($"  AsDouble: {asDouble}");
+                    ___DisplayService.Log($"  AsInt: {asInt}");
+
+                    // Получить все доступные этажи для плоскости
+                    var floors = reader.GetAvailableFloors(plane);
+                    ___DisplayService.Log($"  Доступные этажи: {string.Join(", ", floors)}");
+
+                    // Получить все доступные стойки для этажа
+                    var racks = reader.GetAvailableRacks(plane, floor);
+                    ___DisplayService.Log($"  Доступные стойки на этаже {floor}: {string.Join(", ", racks)}");
+                }
+                else
+                {
+                    ___DisplayService.Log($"Плоскость '{plane}' не найдена в файле");
+                }
+            }
+            catch (FileNotFoundException ex)
+            {
+                ___DisplayService.Log($"Файл Захватки.xlsx не найден: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                ___DisplayService.Log($"Ошибка при чтении Захватки.xlsx: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>

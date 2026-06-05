@@ -71,6 +71,7 @@
     <Compile Include="FragmentSpecificationCollector.cs" />
     <Compile Include="SpecData.cs" />
     <Compile Include="ExcelMiniDataBlock.cs" />
+    <Compile Include="ZahvatkiReader.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
