@@ -248,7 +248,7 @@ namespace SpecCollector
             _logService.Flush();
         }
 
-        private void ProcessDocument(Document doc, int level, List<string> parentChain = null)
+        private void ProcessDocument(Document doc, int level, List<string> parentChain = null, bool isRigelBranch = false)
         {
             if (doc == null) return;
 
@@ -257,6 +257,14 @@ namespace SpecCollector
             // Получить отображаемое имя текущего документа и добавить в цепочку
             string currentDisplayName = GetDocumentDisplayName(doc);
             parentChain.Add(currentDisplayName);
+
+            // Обновляем флаг: если текущий документ содержит "Ригель" или "Ригель2", включаем флаг для всей ветви
+            if (!isRigelBranch &&
+                (currentDisplayName.IndexOf("Ригель", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 currentDisplayName.IndexOf("Ригель2", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                isRigelBranch = true;
+            }
 
             // Получить переменную "Спецификация" из документа (нужна для проверки несовпадения)
             string docSpecValue = null;
@@ -322,7 +330,7 @@ namespace SpecCollector
                 if (row.SourceRowElementUID == Guid.Empty)
                 {
                     // Родная строка → добавляем в результат
-                    var specRow = ExtractRowFromRowElement(row, scheme, doc);
+                    var specRow = ExtractRowFromRowElement(row, scheme, doc, isRigelBranch);
                     if (specRow != null)
                     {
                         _results.Add(specRow);
@@ -356,7 +364,7 @@ namespace SpecCollector
 
                         if (subDoc != null)
                         {
-                            ProcessDocument(subDoc, level + 1, new List<string>(parentChain));
+                            ProcessDocument(subDoc, level + 1, new List<string>(parentChain), isRigelBranch);
                         }
                     }
                     catch { }
@@ -374,7 +382,7 @@ namespace SpecCollector
             return incDoc != null && (bool)incDoc;
         }
 
-        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, Document doc)
+        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, Document doc, bool isRigelBranch)
         {
             var row = new SpecificationRow
             {
@@ -386,6 +394,7 @@ namespace SpecCollector
 
             row.Артикул = GetCellValueAsString(rowElement, scheme, "Артикул");
             row.АртикулБазовый = GetCellValueAsString(rowElement, scheme, "Артикул базовый");
+            row.КодЗаказа = GetCellValueAsString(rowElement, scheme, "Код заказа");
             row.Длина = GetCellValueAsDouble(rowElement, scheme, "Длина");
             row.ДлинаМ = GetCellValueAsDouble(rowElement, scheme, "Длина, м");
             row.Наименование = GetCellValueAsString(rowElement, scheme, "Наименование");
@@ -398,6 +407,9 @@ namespace SpecCollector
             row.ЗаполненияТолщина = GetCellValueAsDouble(rowElement, scheme, "Заполнения толщина");
             row.ЗаполненияПлощадь = GetCellValueAsDouble(rowElement, scheme, "Заполнения площадь");
             row.МестоУстановки = GetCellValueAsString(rowElement, scheme, "Место установки");
+
+            // Размещение: Ригель, если хоть один предок в ветви содержит "Ригель" или "Ригель2"
+            row.Размещение = isRigelBranch ? "Ригель" : "Стойка";
 
             // Лог несовпадения IncludeInDoc и переменной Спецификация из документа
             string docSpecVarValue = null;
@@ -567,7 +579,7 @@ namespace SpecCollector
                 string mullion = "м7";
                 int floor = 50;
 
-                string value = reader.GetString(plane, mullion, floor);
+                string value = reader.GetPhase(plane, mullion, floor);
                 ___DisplayService.Log($"Плоскость={plane}, Моллион={mullion}, Этаж={floor} -> Значение: {value}");
             }
             catch (FileNotFoundException ex)

@@ -52,7 +52,7 @@ namespace SpecCollector
                 if (header == null) continue;
 
                 var mullionCols = header.Keys
-                    .Where(k => k != null && k.ToString().StartsWith("м", StringComparison.OrdinalIgnoreCase))
+                    .Where(k => k != null && (k.ToString().StartsWith("м", StringComparison.OrdinalIgnoreCase) || k.ToString().StartsWith("с", StringComparison.OrdinalIgnoreCase) || k.ToString().StartsWith("c", StringComparison.OrdinalIgnoreCase)))
                     .Select(k => k.ToString())
                     .ToList();
 

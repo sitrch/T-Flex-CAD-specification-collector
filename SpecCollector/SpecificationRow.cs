@@ -63,6 +63,12 @@ namespace SpecCollector
         /// <summary>Место установки</summary>
         public string МестоУстановки { get; set; }
 
+        /// <summary>Размещение (Ригель/Стойка)</summary>
+        public string Размещение { get; set; }
+
+        /// <summary>Код заказа</summary>
+        public string КодЗаказа { get; set; }
+
         /// <summary>
         /// Преобразует строку в словарь для записи в Excel через MiniExcel.
         /// Ключи — заголовки столбцов.
@@ -78,6 +84,7 @@ namespace SpecCollector
                 { "Место установки", (object)МестоУстановки ?? DBNull.Value },
                 { "Артикул", (object)Артикул ?? DBNull.Value },
                 { "Артикул базовый", (object)АртикулБазовый ?? DBNull.Value },
+                { "Код заказа", (object)КодЗаказа ?? DBNull.Value },
                 { "Наименование", (object)Наименование ?? DBNull.Value },
                 { "Длина", Длина.HasValue ? (object)Длина.Value : DBNull.Value },
                 { "Длина, м", ДлинаМ.HasValue ? (object)ДлинаМ.Value : DBNull.Value },
@@ -88,7 +95,8 @@ namespace SpecCollector
                 { "Заполнения высота", ЗаполненияВысота.HasValue ? (object)ЗаполненияВысота.Value : DBNull.Value },
                 { "Заполнения толщина", ЗаполненияТолщина.HasValue ? (object)ЗаполненияТолщина.Value : DBNull.Value },
                 { "Заполнения площадь", ЗаполненияПлощадь.HasValue ? (object)ЗаполненияПлощадь.Value : DBNull.Value },
-                { "Этажей", Этажей.HasValue ? (object)Этажей.Value : DBNull.Value }
+                { "Этажей", Этажей.HasValue ? (object)Этажей.Value : DBNull.Value },
+                { "Размещение", (object)Размещение ?? DBNull.Value }
              };
         }
 
@@ -106,6 +114,7 @@ namespace SpecCollector
                 "Место установки",
                 "Артикул",
                 "Артикул базовый",
+                "Код заказа",
                 "Наименование",
                 "Длина",
                 "Длина, м",
@@ -116,7 +125,8 @@ namespace SpecCollector
                 "Заполнения высота",
                 "Заполнения толщина",
                 "Заполнения площадь",
-                "Этажей"
+                "Этажей",
+                "Размещение"
              };
         }
     }
