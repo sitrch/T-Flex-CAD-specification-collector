@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using MiniExcelLibs;
 using TFlex;
 
@@ -42,10 +43,9 @@ namespace SpecCollector
                 if (header == null) continue;
 
                 var mullionCols = header.Keys
-                    .Where(k => k != null && (k.ToString().StartsWith("м", StringComparison.OrdinalIgnoreCase) 
-                                          || k.ToString().StartsWith("с", StringComparison.OrdinalIgnoreCase) 
-                                          || k.ToString().StartsWith("c", StringComparison.OrdinalIgnoreCase)))
+                    .Where(k => k != null)
                     .Select(k => k.ToString())
+                    .Where(s => s.Length > 1 && (s[0] == 'с' || s[0] == 'С') && s.Substring(1).All(char.IsDigit))
                     .ToList();
 
                 for (int i = 1; i < rows.Count; i++)
