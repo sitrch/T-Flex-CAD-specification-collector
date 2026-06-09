@@ -10,11 +10,11 @@ namespace SpecCollector
     /// Класс для чтения файла Этажи.xlsx.
     /// Формат: один лист, строка 1 = заголовки (A=Этаж, B=(5-1)-(5-6), и т.д.),
     ///         дальше строки с данными: колонка A = этаж, остальные = типовой этаж.
-    /// Возвращает номер типового этажа по плоскости и этажу.
+    /// Использует плоский словарь с кортежным ключом (плоскость, этаж) -> типовой этаж.
     /// </summary>
     public class FloorMatcher
     {
-        private readonly Dictionary<string, Dictionary<int, int>> _data;
+        private readonly Dictionary<(string plane, int floor), int> _data;
 
         public string FilePath { get; private set; }
 
@@ -32,33 +32,26 @@ namespace SpecCollector
             if (!File.Exists(FilePath))
                 throw new FileNotFoundException($"Файл 'Этажи.xlsx' не найден: {FilePath}");
 
-            _data = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
+            _data = new Dictionary<(string, int), int>();
             Load();
         }
 
         private void Load()
         {
-            Console.WriteLine($"[FloorMatcher] Loading: {FilePath}");
-            
             var sheetNames = MiniExcel.GetSheetNames(FilePath).ToList();
-            Console.WriteLine($"[FloorMatcher] Found {sheetNames.Count} sheets: {string.Join(", ", sheetNames)}");
-            
+
             foreach (var sheetName in sheetNames)
             {
                 var rows = MiniExcel.Query(FilePath, sheetName: sheetName).ToList();
-                Console.WriteLine($"[FloorMatcher] Sheet '{sheetName}': {rows.Count} rows");
-                
                 if (rows.Count < 2) continue;
 
-                // Первая строка - заголовки: ключи = A, B, C, D, E, значения = "Этаж", "(5-1)-(5-6)"...
                 var headerRow = rows[0] as IDictionary<string, object>;
                 if (headerRow == null) continue;
 
-                // Строим маппинг: ключ колонки (A/B/C...) -> название плоскости
                 var colToPlane = new Dictionary<string, string>();
                 foreach (var kvp in headerRow)
                 {
-                    string colKey = kvp.Key; // "A", "B", "C"...
+                    string colKey = kvp.Key;
                     string planeName = kvp.Value?.ToString()?.Trim();
                     if (!string.IsNullOrEmpty(planeName) && !planeName.Equals("Этаж", StringComparison.OrdinalIgnoreCase))
                     {
@@ -66,35 +59,29 @@ namespace SpecCollector
                     }
                 }
 
-                Console.WriteLine($"[FloorMatcher] Column -> Plane mapping: {string.Join(", ", colToPlane.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-
-                // Теперь читаем данные: для каждой плоскости строим словарь этаж -> типовой этаж
-                foreach (var colPlane in colToPlane)
+                for (int i = 1; i < rows.Count; i++)
                 {
-                    string colKey = colPlane.Key;  // "B", "C"...
-                    string planeName = colPlane.Value; // "(5-1)-(5-6)"
-                    
-                    var sheet = new Dictionary<int, int>();
-                    
-                    for (int i = 1; i < rows.Count; i++)
+                    var row = rows[i] as IDictionary<string, object>;
+                    if (row == null) continue;
+
+                    object floorObj = null;
+                    row.TryGetValue("A", out floorObj);
+                    if (floorObj == null) continue;
+                    if (!int.TryParse(floorObj.ToString(), out int floor)) continue;
+
+                    foreach (var colPlane in colToPlane)
                     {
-                        var row = rows[i] as IDictionary<string, object>;
-                        if (row == null) continue;
+                        string colKey = colPlane.Key;
+                        string planeName = colPlane.Value;
 
-                        object floorObj = null;
                         object typicalFloorObj = null;
-                        row.TryGetValue("A", out floorObj);           // Колонка A = этаж
-                        row.TryGetValue(colKey, out typicalFloorObj); // Колонка B/C/D/E = типовой этаж
-
-                        if (floorObj == null || typicalFloorObj == null) continue;
-                        if (!int.TryParse(floorObj.ToString(), out int floor)) continue;
+                        row.TryGetValue(colKey, out typicalFloorObj);
+                        if (typicalFloorObj == null) continue;
                         if (!int.TryParse(typicalFloorObj.ToString(), out int typicalFloor)) continue;
 
-                        sheet[floor] = typicalFloor;
+                        var key = (planeName, floor);
+                        _data[key] = typicalFloor;
                     }
-
-                    Console.WriteLine($"[FloorMatcher] Plane '{planeName}': loaded {sheet.Count} floor entries");
-                    _data[planeName] = sheet;
                 }
             }
         }
@@ -109,10 +96,8 @@ namespace SpecCollector
         {
             if (string.IsNullOrEmpty(plane)) return null;
 
-            if (!_data.TryGetValue(plane, out var sheet)) return null;
-            if (!sheet.TryGetValue(floor, out var typicalFloor)) return null;
-
-            return typicalFloor;
+            var key = (plane, floor);
+            return _data.TryGetValue(key, out var typicalFloor) ? typicalFloor : (int?)null;
         }
 
         /// <summary>
@@ -127,10 +112,10 @@ namespace SpecCollector
             var result = new List<KeyValuePair<int, int>>();
 
             if (string.IsNullOrEmpty(plane)) return result;
-            if (!_data.TryGetValue(plane, out var sheet)) return result;
 
-            var counts = sheet
-                .Where(kvp => kvp.Key >= floorFrom && kvp.Key <= floorTo)
+            var counts = _data
+                .Where(kvp => kvp.Key.plane.Equals(plane, StringComparison.OrdinalIgnoreCase))
+                .Where(kvp => kvp.Key.floor >= floorFrom && kvp.Key.floor <= floorTo)
                 .GroupBy(kvp => kvp.Value)
                 .Select(g => new KeyValuePair<int, int>(g.Key, g.Count()))
                 .OrderBy(kvp => kvp.Key)
@@ -150,18 +135,35 @@ namespace SpecCollector
         public int CountTypicalFloorInRange(string plane, int floorFrom, int floorTo, int targetTypicalFloor)
         {
             if (string.IsNullOrEmpty(plane)) return 0;
-            if (!_data.TryGetValue(plane, out var sheet)) return 0;
 
-            return sheet
-                .Where(kvp => kvp.Key >= floorFrom && kvp.Key <= floorTo)
+            return _data
+                .Where(kvp => kvp.Key.plane.Equals(plane, StringComparison.OrdinalIgnoreCase))
+                .Where(kvp => kvp.Key.floor >= floorFrom && kvp.Key.floor <= floorTo)
                 .Count(kvp => kvp.Value == targetTypicalFloor);
         }
 
         /// <summary>
-        /// Возвращает все данные для отладки (плоскость -> этаж -> типовой этаж).
+        /// Возвращает все данные для отладки.
         /// </summary>
-        public IReadOnlyDictionary<string, Dictionary<int, int>> GetAllData() => _data;
+        public IReadOnlyDictionary<(string plane, int floor), int> GetAllData() => _data;
 
+
+        /// <summary>
+        /// Возвращает список уникальных типовых этажей для указанной плоскости.
+        /// </summary>
+        /// <param name="plane">Название плоскости</param>
+        /// <returns>Отсортированный список уникальных типовых этажей</returns>
+        public List<int> GetUniqueFloorList(string plane)
+        {
+            if (string.IsNullOrEmpty(plane)) return new List<int>();
+
+            return _data
+                .Where(kvp => kvp.Key.plane.Equals(plane, StringComparison.OrdinalIgnoreCase))
+                .Select(kvp => kvp.Value)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+        }
         public void Reload() { _data.Clear(); Load(); }
     }
 }

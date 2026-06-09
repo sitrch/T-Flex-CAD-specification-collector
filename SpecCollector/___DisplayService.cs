@@ -37,13 +37,13 @@ namespace SpecCollector
         public static void Log(string message)
         {
             if (_form == null || _form.IsDisposed) Show();
-            try { _form.AddMessage(message); } catch { }
+            try { _form.AddMessage(message); } catch { /* ignored: форма могла быть закрыта */ }
         }
 
         public static void SetProgress(int percent)
         {
             if (_form == null || _form.IsDisposed) Show();
-            try { _form.SetProgress(percent); } catch { }
+            try { _form.SetProgress(percent); } catch { /* ignored: форма могла быть закрыта */ }
         }
 
         public static void Close()
@@ -54,7 +54,7 @@ namespace SpecCollector
                 {
                     _form.Invoke(new Action(() => _form.Close()));
                 }
-                catch { }
+                catch { /* ignored: форма могла быть закрыта */ }
             }
         }
     }

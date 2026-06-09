@@ -70,9 +70,9 @@
     </Compile>
     <Compile Include="FragmentSpecificationCollector.cs" />
     <Compile Include="SpecData.cs" />
-    <Compile Include="ExcelMiniDataBlock.cs" />
     <Compile Include="PhaseReader.cs" />
     <Compile Include="FloorMatcher.cs" />
+    <Compile Include="ReferenceComparer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

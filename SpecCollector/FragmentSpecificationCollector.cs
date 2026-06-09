@@ -16,14 +16,80 @@ namespace SpecCollector
     {
         private const string ProductStructureName = "m2spec";
         private readonly List<SpecificationRow> _results = new List<SpecificationRow>();
-        
+
+        private static readonly HashSet<string> MullionFragmentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Стойка.grb", "Стойка2.grb", "Стойка2 левая.grb",
+            "Стойка2 правая передпоследняя.grb", "Стойка2 правая крайняя.grb"
+        };
+
         private string _rootПлоскость;
         private int? _rootЭтаж;
         private int? _rootЭтажей;
 
-        //public bool OnlyBOMGenerate = false;
+        private FloorMatcher _floorMatcher;
+        private PhaseReader _phaseReader;
+        private Dictionary<string, int> _currentDynamicColumns;
+
         private string _path;
+        private string _specCollectorPath;
+        private string _specCollectorStagesPath;
+        private string _allSpecsPath;
         private LogService _logService;
+        private readonly List<FileStream> _fileLocks = new List<FileStream>();
+
+        public FragmentSpecificationCollector()
+        {
+            Document doc = TFlex.Application.ActiveDocument;
+            if (doc == null)
+            {
+                throw new InvalidOperationException("No active T-FLEX document.");
+            }
+
+            _path = doc.FilePath;
+
+            string directory = Path.GetDirectoryName(_path);
+            if (string.IsNullOrEmpty(directory))
+                throw new ArgumentException("Не удалось определить директорию для пути: " + _path);
+
+            _specCollectorPath = Path.Combine(directory, SpecData.SpecCollectorFileName);
+            _specCollectorStagesPath = Path.Combine(directory, SpecData.SpecCollectorStagesFileName);
+            _allSpecsPath = Path.Combine(directory, SpecData.AllSpecsFileName);
+
+            ___DisplayService.Show();
+            ___DisplayService.Log("Проверка входных файлов...");
+
+            if (!ExcelExporter.ValidateInputFiles(directory))
+                throw new InvalidOperationException("Входные файлы недоступны");
+        }
+
+        /// <summary>
+        /// Блокирует выходные файлы монопольно до конца работы.
+        /// </summary>
+        private void LockOutputFiles(IEnumerable<string> filePaths)
+        {
+            foreach (var path in filePaths)
+            {
+                var stream = ExcelExporter.LockFile(path);
+                if (stream != null)
+                {
+                    _fileLocks.Add(stream);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Снимает блокировки с выходных файлов.
+        /// </summary>
+        public void ReleaseLocks()
+        {
+            foreach (var stream in _fileLocks)
+            {
+                try { stream.Close(); } catch { }
+                try { stream.Dispose(); } catch { }
+            }
+            _fileLocks.Clear();
+        }
 
         public void GenerateSpec()
         {
@@ -38,9 +104,21 @@ namespace SpecCollector
 
             _path = doc.FilePath;
 
+            // Проверка выходных файлов
+            ___DisplayService.Log("Проверка выходных файлов...");
+            if (!ExcelExporter.ValidateFileCanBeWritten(_allSpecsPath, SpecData.AllSpecsFileName) ||
+                !ExcelExporter.ValidateFileCanBeWritten(_specCollectorStagesPath, SpecData.SpecCollectorStagesFileName))
+            {
+                throw new InvalidOperationException("Выходные файлы недоступны для записи");
+            }
+
             _logService = new LogService(_path);
 
-            string fn_AllSpecs = Path.Combine(_path, "Спецификации.xlsx");
+            // Инициализируем FloorMatcher и PhaseReader
+            _floorMatcher = new FloorMatcher(_path);
+            _phaseReader = new PhaseReader(_path);
+
+            string fn_AllSpecs = _allSpecsPath;
 
             var allData = new List<Dictionary<string, object>>();
 
@@ -51,6 +129,14 @@ namespace SpecCollector
 
             ExportToMultipleSheets(fn_AllSpecs, allData);
 
+            LockOutputFiles(new[] { _allSpecsPath });
+
+            ExportStagesSpec();
+
+            LockOutputFiles(new[] { _specCollectorStagesPath });
+
+            ReleaseLocks();
+
             ___DisplayService.Log($"Завершено. Строк: {allData.Count}");
             ___DisplayService.Log("--- LogService ---");
             ___DisplayService.Log(_logService.GetLogText());
@@ -60,7 +146,7 @@ namespace SpecCollector
 
         private void CollectSpecData(SpecData.SpecItem изделие, List<Dictionary<string, object>> allData)
         {
-            string dpath = Path.Combine(_path, изделие.Плоскость) == null ? изделие.FileName : Path.Combine(_path, изделие.FileName);
+            string dpath = Path.Combine(_path, изделие.FileName);
 
             Document doc = TFlex.Application.OpenDocument(dpath);
             if (doc == null)
@@ -68,12 +154,18 @@ namespace SpecCollector
                 return;
             }
 
-            foreach (var floor in изделие.Этажи)
+            var uniqueFloors = _floorMatcher.GetUniqueFloorList(изделие.Плоскость);
+            var floorStats = _floorMatcher.GetTypicalFloorStats(изделие.Плоскость, SpecData.FloorRangeFrom, SpecData.FloorRangeTo);
+
+            foreach (var floor in uniqueFloors)
             {
-                ___DisplayService.Log($"Set variables: плоскость={изделие.Плоскость}, этаж={floor.Этаж}");
+                int count = floorStats.FirstOrDefault(kvp => kvp.Key == floor).Value;
+
+                ___DisplayService.Log($"Set variables: плоскость={изделие.Плоскость}, этаж={floor}, этажей={count}");
                 doc.BeginChanges("");
                 SetTextVariableValue(doc, SpecData.плоскостьVarName, изделие.Плоскость);
-                SetIntegerVariableValue(doc, SpecData.ЭтажVarName, floor.Этаж);
+                SetIntegerVariableValue(doc, SpecData.ЭтажVarName, floor);
+                SetIntegerVariableValue(doc, SpecData.ЭтажейVarName, count);
 
                 doc.EndChanges();
                 doc.Changed = true;
@@ -82,9 +174,12 @@ namespace SpecCollector
                 UpdateProductStructure(doc);
                 doc.EndChanges();
 
-                ___DisplayService.Log($"Формирование спецификации: плоскость={изделие.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
+                ___DisplayService.Log($"Формирование спецификации: плоскость={изделие.Плоскость}, этаж={floor}, этажей={count}");
 
-                CollectFromDocument(doc, изделие.Плоскость, floor.Этаж, floor.Этажей);
+                // Вычисляем динамические столбцы для текущего этажа
+                var dynamicColumns = ComputeDynamicColumns(изделие.Плоскость, floor);
+
+                CollectFromDocument(doc, изделие.Плоскость, floor, count, dynamicColumns);
 
                 foreach (var row in _results)
                 {
@@ -96,58 +191,142 @@ namespace SpecCollector
             doc.Close();
         }
 
-        private void CollectFromDocument(Document doc, string плоскость, int этаж, int этажей)
+        private Dictionary<string, int> ComputeDynamicColumns(string plane, int floor)
+        {
+            var result = new Dictionary<string, int>();
+
+            if (_floorMatcher == null || string.IsNullOrEmpty(plane))
+                return result;
+
+            // Получаем типовой этаж для текущего этажа и плоскости
+            var typicalFloor = _floorMatcher.GetTypicalFloor(plane, floor);
+            if (!typicalFloor.HasValue)
+                return result;
+
+            // Для каждого RequestItem считаем количество вхождений типового этажа в диапазоне
+            if (SpecData.RequestItems != null)
+            {
+                foreach (var item in SpecData.RequestItems)
+                {
+                    if (!string.IsNullOrEmpty(item.Name))
+                    {
+                        int count = _floorMatcher.CountTypicalFloorInRange(plane, item.StartFloor, item.EndFloor, typicalFloor.Value);
+                        result[item.Name] = count;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private void CollectFromDocument(Document doc, string плоскость, int этаж, int этажей, Dictionary<string, int> dynamicColumns = null)
         {
             _rootПлоскость = плоскость;
             _rootЭтаж = этаж;
             _rootЭтажей = этажей;
+            _currentDynamicColumns = dynamicColumns ?? new Dictionary<string, int>();
             ProcessDocument(doc, 0, null);
         }
 
         private void ExportToMultipleSheets(string filePath, List<Dictionary<string, object>> allData)
         {
-            var sheets = new Dictionary<string, object>();
-
-            sheets.Add("Спецификация", allData);
-
-            var groupMapping = SpecData.BOMSections;
-
-            var groups = new Dictionary<string, List<Dictionary<string, object>>>();
-
-            foreach (var row in allData)
-            {
-                string razdel = row.ContainsKey("Раздел") ? row["Раздел"]?.ToString() : null;
-                string groupName = "Другое";
-
-                if (razdel != null && groupMapping.ContainsKey(razdel))
-                {
-                    groupName = groupMapping[razdel];
-                }
-
-                if (!groups.ContainsKey(groupName))
-                {
-                    groups[groupName] = new List<Dictionary<string, object>>();
-                }
-                groups[groupName].Add(row);
-            }
-
-            string[] sheetOrder = { "Детали", "Термомосты", "Заполнения", "Комплектующие", "Материалы", "Раскрой", "Проверка", "Другое" };
-
-            foreach (var sheetName in sheetOrder)
-            {
-                if (groups.ContainsKey(sheetName))
-                {
-                    sheets.Add(sheetName, groups[sheetName]);
-                }
-            }
-
+            var sheets = ExcelExporter.GroupDataBySections(allData);
             var config = new OpenXmlConfiguration()
             {
                 FastMode = true,
                 EnableAutoWidth = true
             };
-
             MiniExcel.SaveAs(filePath, sheets, overwriteFile: true, configuration: config);
+        }
+
+        private void ExportStagesSpec()
+        {
+            ___DisplayService.Log("Старт ExportStagesSpec");
+
+            string fn_Stages = _specCollectorStagesPath;
+            var stagesData = new List<Dictionary<string, object>>();
+
+            var productItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
+
+            foreach (var изделие in productItems)
+            {
+                string dpath = Path.Combine(_path, изделие.FileName);
+                Document doc = TFlex.Application.OpenDocument(dpath);
+                if (doc == null)
+                {
+                    ___DisplayService.Log($"ExportStagesSpec: не удалось открыть {изделие.FileName}");
+                    continue;
+                }
+
+                var uniqueFloors = _floorMatcher.GetUniqueFloorList(изделие.Плоскость);
+
+            foreach (var typicalFloor in uniqueFloors)
+            {
+                ___DisplayService.Log($"ExportStagesSpec: плоскость={изделие.Плоскость}, типовой этаж={typicalFloor}");
+
+                doc.BeginChanges("");
+                SetTextVariableValue(doc, SpecData.плоскостьVarName, изделие.Плоскость);
+                SetIntegerVariableValue(doc, SpecData.ЭтажVarName, typicalFloor);
+                SetIntegerVariableValue(doc, SpecData.ЭтажейVarName, 1);
+                doc.EndChanges();
+                doc.Changed = true;
+
+                doc.BeginChanges("");
+                UpdateProductStructure(doc);
+                doc.EndChanges();
+
+                // Сбор без динамических столбцов
+                CollectFromDocument(doc, изделие.Плоскость, typicalFloor, 1, null);
+
+                    // Определяем физические этажи, соответствующие этому типовому
+                    var physicalFloors = Enumerable.Range(SpecData.FloorRangeFrom, SpecData.FloorRangeTo - SpecData.FloorRangeFrom + 1)
+                        .Where(f => _floorMatcher.GetTypicalFloor(изделие.Плоскость, f) == typicalFloor)
+                        .ToList();
+
+                    ___DisplayService.Log($"ExportStagesSpec: физических этажей={physicalFloors.Count}");
+
+                    foreach (var physFloor in physicalFloors)
+                    {
+                        foreach (var row in _results)
+                        {
+                            var excelRow = row.ToExcelRowStages();
+                            excelRow["Этаж"] = physFloor;
+
+                            // Вычисляем Этап через PhaseReader
+                            if (row.MullionNumber.HasValue)
+                            {
+                                string mullion = "с" + row.MullionNumber.Value.ToString();
+                                string phase = _phaseReader.GetPhase(изделие.Плоскость, mullion, physFloor);
+                                excelRow["Этап"] = (object)phase ?? DBNull.Value;
+                            }
+
+                            stagesData.Add(excelRow);
+                        }
+                    }
+
+                    _results.Clear();
+                }
+
+                doc.Close();
+            }
+
+            ___DisplayService.Log($"ExportStagesSpec: всего строк={stagesData.Count}");
+
+            if (stagesData.Count > 0)
+            {
+                var sheets = ExcelExporter.GroupDataBySections(stagesData);
+                var config = new OpenXmlConfiguration()
+                {
+                    FastMode = true,
+                    EnableAutoWidth = true
+                };
+                MiniExcel.SaveAs(fn_Stages, sheets, overwriteFile: true, configuration: config);
+                ___DisplayService.Log($"ExportStagesSpec: файл сохранён {fn_Stages}");
+            }
+            else
+            {
+                ___DisplayService.Log("ExportStagesSpec: нет данных для экспорта");
+            }
         }
 
         private void UpdateProductStructure(Document doc)
@@ -179,17 +358,24 @@ namespace SpecCollector
             {
                 throw new InvalidOperationException("No active T-FLEX document.");
             }
-            string outputExcelPath = Path.Combine(doc.FilePath, "SpecCollector.xlsx");
-            CollectAndExport(doc, outputExcelPath);
+
+            CollectAndExport(doc);
         }
 
-        public void CollectAndExport(Document rootDocument, string outputExcelPath)
+        public void CollectAndExport(Document rootDocument)
         {
             ___DisplayService.Show();
             ___DisplayService.Log("Старт CollectAndExport");
 
+            // Проверка выходного файла
+            if (!ExcelExporter.ValidateFileCanBeWritten(_specCollectorPath, SpecData.SpecCollectorFileName))
+                throw new InvalidOperationException("Выходной файл недоступен для записи");
+
             _results.Clear();
             _logService = new LogService(rootDocument.FilePath);
+
+            // Инициализируем FloorMatcher для работы с Этажи.xlsx
+            _floorMatcher = new FloorMatcher(rootDocument.FilePath);
 
             // Находим подходящий SpecItem по имени файла документа
             string docFileName = Path.GetFileName(rootDocument.FilePath);
@@ -208,7 +394,6 @@ namespace SpecCollector
 
             if (found && targetItem.Этажи != null && targetItem.Этажи.Length > 0)
             {
-                // Перебираем все этажи из SpecItem, как в GenerateSpec()
                 foreach (var floor in targetItem.Этажи)
                 {
                     rootDocument.BeginChanges("");
@@ -224,31 +409,69 @@ namespace SpecCollector
 
                     ___DisplayService.Log($"Сбор: плоскость={targetItem.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
 
-                    CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
+                    var dynamicColumns = ComputeDynamicColumns(targetItem.Плоскость, floor.Этаж);
+                    CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей, dynamicColumns);
                 }
             }
             else
             {
-                // Fallback: читаем значения из переменных документа
                 _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
                 _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
 
                 ___DisplayService.Log($"Сбор (fallback): плоскость={_rootПлоскость}, этаж={_rootЭтаж}");
 
+                var dynamicColumns = ComputeDynamicColumns(_rootПлоскость ?? "", _rootЭтаж ?? 0);
+                _currentDynamicColumns = dynamicColumns ?? new Dictionary<string, int>();
+
                 ProcessDocument(rootDocument, 0);
             }
 
-            var exporter = new ExcelExporter(outputExcelPath);
+            var exporter = new ExcelExporter(_specCollectorPath);
             exporter.Export(_results);
 
-            ___DisplayService.Log($"Завершено. Строк: {_results.Count}");
+            LockOutputFiles(new[] { _specCollectorPath });
+
+            // Этапы — раскрытие из уже собранных _results
+            _phaseReader = new PhaseReader(_path);
+            var stagesData = new List<Dictionary<string, object>>();
+            foreach (var row in _results)
+            {
+                if (!row.Этаж.HasValue) continue;
+                var physFloors = Enumerable.Range(SpecData.FloorRangeFrom, SpecData.FloorRangeTo - SpecData.FloorRangeFrom + 1)
+                    .Where(f => _floorMatcher.GetTypicalFloor(row.Плоскость, f) == row.Этаж.Value)
+                    .ToList();
+                foreach (var physFloor in physFloors)
+                {
+                    var excelRow = row.ToExcelRowStages();
+                    excelRow["Этаж"] = physFloor;
+                    if (row.MullionNumber.HasValue)
+                    {
+                        string phase = _phaseReader.GetPhase(row.Плоскость, "с" + row.MullionNumber.Value, physFloor);
+                        excelRow["Этап"] = (object)phase ?? DBNull.Value;
+                    }
+                    stagesData.Add(excelRow);
+                }
+            }
+            ___DisplayService.Log($"Строк этапов: {stagesData.Count}");
+            if (stagesData.Count > 0)
+            {
+                var sheets = ExcelExporter.GroupDataBySections(stagesData);
+                var cfg = new OpenXmlConfiguration() { FastMode = true, EnableAutoWidth = true };
+                MiniExcel.SaveAs(_specCollectorStagesPath, sheets, overwriteFile: true, configuration: cfg);
+            }
+
+            LockOutputFiles(new[] { _specCollectorStagesPath });
+
+            ReleaseLocks();
+
+            ___DisplayService.Log($"Завершено.");
             ___DisplayService.Log("--- LogService ---");
             ___DisplayService.Log(_logService.GetLogText());
 
             _logService.Flush();
         }
 
-        private void ProcessDocument(Document doc, int level, List<string> parentChain = null, bool isRigelBranch = false)
+        private void ProcessDocument(Document doc, int level, List<string> parentChain = null, bool isRigelBranch = false, int? mullionNumber = null)
         {
             if (doc == null) return;
 
@@ -258,26 +481,28 @@ namespace SpecCollector
             string currentDisplayName = GetDocumentDisplayName(doc);
             parentChain.Add(currentDisplayName);
 
-            // Обновляем флаг: если текущий документ содержит "Ригель" или "Ригель2", включаем флаг для всей ветви
+            // Если текущий фрагмент — стойка, читаем переменную "Стойка"
+            string docFileName = Path.GetFileName(doc.FileName ?? "");
+            if (!mullionNumber.HasValue && MullionFragmentNames.Contains(docFileName))
+            {
+                try
+                {
+                    var rackVar = doc.FindVariable("Стойка");
+                    if (rackVar != null)
+                    {
+                        mullionNumber = (int)rackVar.RealValue;
+                    }
+                }
+                catch { /* переменная Стойка может отсутствовать */ }
+            }
+
+            // Обновляем флаг: если текущий файл — Ригель.grb, ригель2.grb или Ригель гнутый левый.grb, включаем флаг для всей ветви
             if (!isRigelBranch &&
-                (currentDisplayName.IndexOf("Ригель", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 currentDisplayName.IndexOf("Ригель2", StringComparison.OrdinalIgnoreCase) >= 0))
+                (docFileName.IndexOf("Ригель", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 docFileName.IndexOf("ригель2", StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 isRigelBranch = true;
             }
-
-            // Получить переменную "Спецификация" из документа (нужна для проверки несовпадения)
-            string docSpecValue = null;
-            try
-            {
-                var specVar = doc.FindVariable("Спецификация");
-                if (specVar != null)
-                {
-                    int specIntVal = (int)specVar.RealValue;
-                    docSpecValue = specIntVal.ToString();
-                }
-            }
-            catch { }
 
             var productStructures = doc.GetProductStructures();
             if (productStructures == null || productStructures.Count == 0)
@@ -305,18 +530,9 @@ namespace SpecCollector
             // ЭТАП 1: Проход по BOM-строкам (один проход)
             foreach (var row in allRows)
             {
-                var rowName = GetCellValueAsString(row, scheme, "Наименование") ?? "(null)";
-                var rowArt = GetCellValueAsString(row, scheme, "Артикул") ?? "(null)";
-
                 // Фильтрация ветвей: если строка не включена в спецификацию — пропускаем
                 if (!IsInSpecification(row))
                 {
-                    // Лог только при несовпадении: IncludeInDoc=false, но Спецификация=="1"
-                    if (docSpecValue == "1")
-                    {
-                        string chainStr = string.Join(" → ", parentChain);
-                        _logService.Log($"MISMATCH | IncludeInDoc=false, но Спецификация=1 | [{rowArt}] [{rowName}] chain={chainStr} level={level}");
-                    }
                     continue;
                 }
 
@@ -330,7 +546,7 @@ namespace SpecCollector
                 if (row.SourceRowElementUID == Guid.Empty)
                 {
                     // Родная строка → добавляем в результат
-                    var specRow = ExtractRowFromRowElement(row, scheme, doc, isRigelBranch);
+                    var specRow = ExtractRowFromRowElement(row, scheme, doc, isRigelBranch, mullionNumber);
                     if (specRow != null)
                     {
                         _results.Add(specRow);
@@ -364,10 +580,10 @@ namespace SpecCollector
 
                         if (subDoc != null)
                         {
-                            ProcessDocument(subDoc, level + 1, new List<string>(parentChain), isRigelBranch);
+                            ProcessDocument(subDoc, level + 1, new List<string>(parentChain), isRigelBranch, mullionNumber);
                         }
                     }
-                    catch { }
+                    catch { /* фрагмент может быть недоступен для регенерации */ }
                 }
             }
 
@@ -382,14 +598,16 @@ namespace SpecCollector
             return incDoc != null && (bool)incDoc;
         }
 
-        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, Document doc, bool isRigelBranch)
+        private SpecificationRow ExtractRowFromRowElement(RowElement rowElement, Scheme scheme, Document doc, bool isRigelBranch, int? mullionNumber = null)
         {
             var row = new SpecificationRow
             {
                 Плоскость = _rootПлоскость,
                 Этаж = _rootЭтаж,
                 Этажей = _rootЭтажей,
-                Источник = Path.GetFileName(doc.FileName ?? "")
+                Источник = Path.GetFileName(doc.FileName ?? ""),
+                DynamicColumns = new Dictionary<string, int>(_currentDynamicColumns),
+                MullionNumber = mullionNumber
             };
 
             row.Артикул = GetCellValueAsString(rowElement, scheme, "Артикул");
@@ -410,24 +628,6 @@ namespace SpecCollector
 
             // Размещение: Ригель, если хоть один предок в ветви содержит "Ригель" или "Ригель2"
             row.Размещение = isRigelBranch ? "Ригель" : "Стойка";
-
-            // Лог несовпадения IncludeInDoc и переменной Спецификация из документа
-            string docSpecVarValue = null;
-            try
-            {
-                var docSpecVar = doc.FindVariable("Спецификация");
-                if (docSpecVar != null)
-                {
-                    int docSpecIntVal = (int)docSpecVar.RealValue;
-                    docSpecVarValue = docSpecIntVal.ToString();
-                }
-            }
-            catch { }
-
-            if (docSpecVarValue != "1")
-            {
-                _logService.Log($"MISMATCH | IncludeInDoc=true, но doc Спецификация={docSpecVarValue} | [{row.Артикул}] [{row.Наименование}]");
-            }
 
             return row;
         }
@@ -487,7 +687,7 @@ namespace SpecCollector
                     return var.TextValue;
                 }
             }
-            catch { }
+            catch { /* expected: переменная $Наименование может отсутствовать */ }
             return Path.GetFileName(doc.FileName ?? "Unknown");
         }
 
@@ -498,114 +698,74 @@ namespace SpecCollector
             return (int?)var.RealValue;
         }
 
-        public List<SpecificationRow> Collect(Document rootDocument)
-        {
-            ___DisplayService.Show();
-            ___DisplayService.Log("Старт Collect");
+        //public List<SpecificationRow> Collect(Document rootDocument)
+        //{
+        //    ___DisplayService.Show();
+        //    ___DisplayService.Log("Старт Collect");
+        //
+        //    _results.Clear();
+        //    _logService = new LogService(rootDocument.FilePath);
+        //
+        //    // Находим подходящий SpecItem по имени файла документа
+        //    string docFileName = Path.GetFileName(rootDocument.FilePath);
+        //    var specItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
+        //    SpecData.SpecItem targetItem = default;
+        //    bool found = false;
+        //    foreach (var item in specItems)
+        //    {
+        //        if (string.Equals(item.FileName, docFileName, StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            targetItem = item;
+        //            found = true;
+        //            break;
+        //        }
+        //    }
+        //
+        //    if (found && targetItem.Этажи != null && targetItem.Этажи.Length > 0)
+        //    {
+        //        foreach (var floor in targetItem.Этажи)
+        //        {
+        //            rootDocument.BeginChanges("");
+        //            SetTextVariableValue(rootDocument, SpecData.плоскостьVarName, targetItem.Плоскость);
+        //            SetIntegerVariableValue(rootDocument, SpecData.ЭтажVarName, floor.Этаж);
+        //            SetIntegerVariableValue(rootDocument, SpecData.ЭтажейVarName, floor.Этажей);
+        //            rootDocument.EndChanges();
+        //            rootDocument.Changed = true;
+        //
+        //            rootDocument.BeginChanges("");
+        //            UpdateProductStructure(rootDocument);
+        //            rootDocument.EndChanges();
+        //
+        //            ___DisplayService.Log($"Сбор: плоскость={targetItem.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
+        //
+        //            // Вычисляем динамические столбцы для текущего этажа
+        //            var dynamicColumns = ComputeDynamicColumns(targetItem.Плоскость, floor.Этаж);
+        //
+        //            CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей, dynamicColumns);
+        //        }
+        //    }
+        //    else
+        //    {
+        //        _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
+        //        _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
+        //        _rootЭтажей = GetIntVariableValue(rootDocument, SpecData.ЭтажейVarName);
+        //
+        //        ___DisplayService.Log($"Сбор (fallback): плоскость={_rootПлоскость}, этаж={_rootЭтаж}");
+        //
+        //        // Для fallback тоже вычисляем динамические столбцы
+        //        var dynamicColumns = ComputeDynamicColumns(_rootПлоскость ?? "", _rootЭтаж ?? 0);
+        //        _currentDynamicColumns = dynamicColumns ?? new Dictionary<string, int>();
+        //
+        //        ProcessDocument(rootDocument, 0);
+        //    }
+        //
+        //    ___DisplayService.Log($"Завершено. Строк: {_results.Count}");
+        //    ___DisplayService.Log("--- LogService ---");
+        //    ___DisplayService.Log(_logService.GetLogText());
+        //
+        //    _logService.Flush();
+        //    return new List<SpecificationRow>(_results);
+        //}
 
-            _results.Clear();
-            _logService = new LogService(rootDocument.FilePath);
-
-            // Находим подходящий SpecItem по имени файла документа
-            string docFileName = Path.GetFileName(rootDocument.FilePath);
-            var specItems = new[] { SpecData.Изделия1, SpecData.Изделия2, SpecData.Изделия3, SpecData.Изделия4 };
-            SpecData.SpecItem targetItem = default;
-            bool found = false;
-            foreach (var item in specItems)
-            {
-                if (string.Equals(item.FileName, docFileName, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetItem = item;
-                    found = true;
-                    break;
-                }
-            }
-
-            if (found && targetItem.Этажи != null && targetItem.Этажи.Length > 0)
-            {
-                foreach (var floor in targetItem.Этажи)
-                {
-                    rootDocument.BeginChanges("");
-                    SetTextVariableValue(rootDocument, SpecData.плоскостьVarName, targetItem.Плоскость);
-                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажVarName, floor.Этаж);
-                    SetIntegerVariableValue(rootDocument, SpecData.ЭтажейVarName, floor.Этажей);
-                    rootDocument.EndChanges();
-                    rootDocument.Changed = true;
-
-                    rootDocument.BeginChanges("");
-                    UpdateProductStructure(rootDocument);
-                    rootDocument.EndChanges();
-
-                    ___DisplayService.Log($"Сбор: плоскость={targetItem.Плоскость}, этаж={floor.Этаж}, этажей={floor.Этажей}");
-
-                    CollectFromDocument(rootDocument, targetItem.Плоскость, floor.Этаж, floor.Этажей);
-                }
-            }
-            else
-            {
-                _rootПлоскость = GetTextVariableValue(rootDocument, SpecData.плоскостьVarName);
-                _rootЭтаж = GetIntVariableValue(rootDocument, SpecData.ЭтажVarName);
-                _rootЭтажей = GetIntVariableValue(rootDocument, SpecData.ЭтажейVarName);
-
-                ___DisplayService.Log($"Сбор (fallback): плоскость={_rootПлоскость}, этаж={_rootЭтаж}");
-
-                ProcessDocument(rootDocument, 0);
-            }
-
-            ___DisplayService.Log($"Завершено. Строк: {_results.Count}");
-            ___DisplayService.Log("--- LogService ---");
-            ___DisplayService.Log(_logService.GetLogText());
-
-            _logService.Flush();
-            return new List<SpecificationRow>(_results);
-        }
-
-        /// <summary>
-        /// Пример использования PhaseReader для получения данных из файла Захватки.xlsx.
-        /// </summary>
-        public void Example_ReadPhases(Document doc)
-        {
-            if (doc == null)
-                throw new ArgumentNullException(nameof(doc));
-
-            try
-            {
-                var reader = new PhaseReader(doc.FilePath);
-
-                ___DisplayService.Log($"Файл Захватки.xlsx: {reader.FilePath}");
-
-                // Пример: плоскость "(5-1)-(5-6)", моллион м7, этаж 50
-                string plane = "(5-1)-(5-6)";
-                string mullion = "м7";
-                int floor = 50;
-
-                string value = reader.GetPhase(plane, mullion, floor);
-                ___DisplayService.Log($"Плоскость={plane}, Моллион={mullion}, Этаж={floor} -> Значение: {value}");
-            }
-            catch (FileNotFoundException ex)
-            {
-                ___DisplayService.Log($"Файл Захватки.xlsx не найден: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                ___DisplayService.Log($"Ошибка при чтении Захватки.xlsx: {ex.Message}");
-            }
-        }
-    }
-
-    /// <summary>
-    /// Сравнитель по ссылке на объект (reference equality) для HashSet.
-    /// </summary>
-    internal class ReferenceComparer : IEqualityComparer<object>
-    {
-        public new bool Equals(object x, object y)
-        {
-            return ReferenceEquals(x, y);
-        }
-
-        public int GetHashCode(object obj)
-        {
-            return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
-        }
     }
 }

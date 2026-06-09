@@ -28,9 +28,6 @@ namespace SpecCollector
         {
             _filePath = Path.Combine(directoryPath, "collector.log1");
             _startTime = DateTime.Now;
-
-            // Очистить файл и записать шапку
-            File.WriteAllText(_filePath, $"[{_startTime}] === Спецификация: старт ===\n");
         }
 
         /// <summary>

@@ -119,5 +119,29 @@ namespace SpecCollector
             }
         };
 
+        public struct RequestItem
+        {
+            public string Name;
+            public int StartFloor;
+            public int EndFloor;
+        }
+
+        public static List<RequestItem> RequestItems = new List<RequestItem>()
+        {
+            new RequestItem { Name = "2-57", StartFloor = 2, EndFloor = 57 },
+            new RequestItem { Name = "2-10", StartFloor = 2, EndFloor = 10 },
+            new RequestItem { Name = "11-30", StartFloor = 11, EndFloor = 30 },
+            new RequestItem { Name = "31-57", StartFloor = 31, EndFloor = 57 }
+        };
+
+        public static string SpecCollectorFileName = "SpecCollector.xlsx";
+        public static string SpecCollectorStagesFileName = "Спецификации_Этапы.xlsx";
+        public static string AllSpecsFileName = "Спецификации.xlsx";
+        public static string FloorsFileName = "Этажи.xlsx";
+        public static string PhasesFileName = "Захватки.xlsx";
+
+        public static int FloorRangeFrom = 2;
+        public static int FloorRangeTo = 57;
+
     }
 }
